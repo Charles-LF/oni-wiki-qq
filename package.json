@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-oni-wiki-qq",
   "description": "缺氧Wiki查询。QQ群版。需要官方群机器人md模板和群机器人权限。自用",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
