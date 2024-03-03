@@ -184,11 +184,3 @@ export function createBtn(input: string[][]): object[] {
   });
   return rows;
 }
-
-let data = [
-  ["a", "b", "c", "d"],
-  ["1", "2", "3", "4"],
-];
-let d = createBtn(data);
-// let c = JSON.stringify(d);
-console.log(d);
