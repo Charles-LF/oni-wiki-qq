@@ -1,5 +1,5 @@
 import fs from "fs";
-import { Context } from "koishi";
+import { Context, Row } from "koishi";
 import puppeteer from "koishi-plugin-puppeteer";
 import { Config } from ".";
 
@@ -134,3 +134,61 @@ export async function getFromFandom(
       return [];
     });
 }
+
+/**
+ * @param list 传入的列表,内部元素要求为偶数个
+ * @returns 对象列表
+ */
+export function createMd(list: string[]): object[] {
+  let res = [];
+  for (let i = 0; i < list.length; i += 2) {
+    res.push({
+      key: list[i],
+      values: [list[i + 1]],
+    });
+  }
+  return res;
+}
+
+/**
+ * @param btn_list 按钮数组 [['第一行按钮','第一行按钮DATA'],['第二行按钮','第二行按钮DATA']]
+ * @returns 按钮列表rows
+ * @description 创建多行按钮
+ */
+export function createBtn(input: string[][]): object[] {
+  const rows = [];
+  input.forEach((subList) => {
+    const row = {
+      buttons: [],
+    };
+    for (let i = 0; i < subList.length; i += 2) {
+      const button = {
+        id: i / 2 + 1,
+        render_data: {
+          label: subList[i],
+          visited_label: subList[i],
+        },
+        ction: {
+          type: 2,
+          permission: {
+            type: 2,
+          },
+          unsupport_tips: "兼容文本",
+          data: subList[i + 1],
+          enter: true,
+        },
+      };
+      row.buttons.push(button);
+    }
+    rows.push(row);
+  });
+  return rows;
+}
+
+let data = [
+  ["a", "b", "c", "d"],
+  ["1", "2", "3", "4"],
+];
+let d = createBtn(data);
+// let c = JSON.stringify(d);
+console.log(d);

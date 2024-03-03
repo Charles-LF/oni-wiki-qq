@@ -38,7 +38,7 @@ export function apply(ctx: Context, config: Config) {
     .option("update", "-u 更新本地缓存", { authority: 2 })
     .option("delete", "-d 删除本地缓存", { authority: 2 })
     .option("rename", "-r <newName> 重命名本地缓存", { authority: 2 })
-    .action(async ({ session, options }, itemName) => {
+    .action(async ({ session, options }, itemName = "电解器") => {
       let filePath =
         config.imgPath +
         itemName.replace(/\//g, "-").replace(/:/g, "-").replace(/'/g, "-") +
@@ -101,122 +101,29 @@ export function apply(ctx: Context, config: Config) {
               five = "萌新骨头汤",
             ] = title;
             // 发送md消息
+            let md_str_list: string[] = [
+              "text1",
+              "oh no,出现了亿点点问题!!!",
+              "text2",
+              "在wiki里没有找到你所输入的关键字,下面是自主搜索的结果,你看看有没有需要的:",
+              "text3",
+              `占位`,
+              "text4",
+              `1.${one}\r2.${two}\r3.${three}\r4.${four}\r5.${five}`,
+              "text5",
+              "有的话,请点击按钮选择,没有,请等待30秒自动结束本轮查询以减少服务器压力",
+            ];
+            let btn_list = [["①", "1", "②", "2", "③", "④", "4", "⑤", "5"]];
             await session.bot.internal.sendMessage(session.guildId, {
               content: "111",
               msg_type: 2,
               markdown: {
                 custom_template_id: config.mdId,
-                params: [
-                  {
-                    key: `one`,
-                    values: [one],
-                  },
-                  {
-                    key: `two`,
-                    values: [two],
-                  },
-                  {
-                    key: `three`,
-                    values: [three],
-                  },
-                  {
-                    key: `four`,
-                    values: [four],
-                  },
-                  {
-                    key: `five`,
-                    values: [five],
-                  },
-                ],
+                params: lib.createMd(md_str_list),
               },
               keyboard: {
                 content: {
-                  rows: [
-                    {
-                      buttons: [
-                        {
-                          id: "1",
-                          render_data: {
-                            label: "①",
-                            visited_label: "①",
-                          },
-                          action: {
-                            type: 2,
-                            permission: {
-                              type: 2,
-                            },
-                            unsupport_tips: "兼容文本",
-                            data: "1",
-                            enter: true,
-                          },
-                        },
-                        {
-                          id: "2",
-                          render_data: {
-                            label: "②",
-                            visited_label: "②",
-                          },
-                          action: {
-                            type: 2,
-                            permission: {
-                              type: 2,
-                            },
-                            unsupport_tips: "兼容文本",
-                            data: "2",
-                            enter: true,
-                          },
-                        },
-                        {
-                          id: "3",
-                          render_data: {
-                            label: "③",
-                            visited_label: "③",
-                          },
-                          action: {
-                            type: 2,
-                            permission: {
-                              type: 2,
-                            },
-                            unsupport_tips: "兼容文本",
-                            data: "3",
-                            enter: true,
-                          },
-                        },
-                        {
-                          id: "4",
-                          render_data: {
-                            label: "④",
-                            visited_label: "④",
-                          },
-                          action: {
-                            type: 2,
-                            permission: {
-                              type: 2,
-                            },
-                            unsupport_tips: "兼容文本",
-                            data: "4",
-                            enter: true,
-                          },
-                        },
-                        {
-                          id: "5",
-                          render_data: {
-                            label: "⑤",
-                            visited_label: "⑤",
-                          },
-                          action: {
-                            type: 2,
-                            permission: {
-                              type: 2,
-                            },
-                            unsupport_tips: "兼容文本",
-                            data: "5",
-                            enter: true,
-                          },
-                        },
-                      ],
-                    },
-                  ],
+                  rows: lib.createBtn(btn_list),
                 },
               },
               msg_id: session.messageId,
