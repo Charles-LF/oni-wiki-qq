@@ -50,7 +50,7 @@ export async function screenShot(
   config: Config
 ) {
   if (!url) {
-    return `你游还没有这些东西...`;
+    return false;
   } else {
     const page = await ctx.puppeteer.page();
     await page.goto(url, {
@@ -76,15 +76,11 @@ export async function screenShot(
       })
       .then(async () => {
         // console.info(`截图成功...`);
-        return `截图已保存到以下网址，请自行点击查看:\n ${
-          config.publicUrl
-        }${encodeURI(
-          itemName.replace(/\//g, "-").replace(/:/g, "-").replace(/'/g, "-")
-        )}.jpeg`;
+        return true;
       })
       .catch((err) => {
         console.error(err);
-        return `截图失败...`;
+        return false;
       })
       .finally(async () => {
         await page.close();
@@ -168,7 +164,7 @@ export function createBtn(input: string[][]): object[] {
           label: subList[i],
           visited_label: subList[i],
         },
-        ction: {
+        action: {
           type: 2,
           permission: {
             type: 2,
