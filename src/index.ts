@@ -36,7 +36,6 @@ export const usage = `
   - 0.0.2 基本功能完成
   - 0.0.1 初始化，明天再慢慢写了（
 `;
-
 export interface Config {
   mdId: string;
   api: string;
