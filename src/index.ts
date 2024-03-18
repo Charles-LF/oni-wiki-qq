@@ -21,6 +21,7 @@
 //                  南无加特林菩萨
 //          菩提本无树           明镜亦非台
 //          本来无BUG            何必常修改
+//                  佛曰: 能跑就行
 
 import { Context, Schema } from "koishi";
 import fs from "fs";
