@@ -32,6 +32,7 @@ export const name = "oni-wiki-qq";
 
 export const inject = ["puppeteer"];
 export const usage = `
+  - 0.0.6 空网址错误处理
   - 0.0.5 太久没写忘记build了...
   - 0.0.4 煞笔腾讯不给发md了艹
   - 0.0.3 将链接改为md发送以绕过沟腾讯的链接拦截
