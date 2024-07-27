@@ -32,6 +32,7 @@ export const name = "oni-wiki-qq";
 
 export const inject = ["puppeteer"];
 export const usage = `
+  - 0.0.7 对网址进行编码以确保不会出现奇奇怪怪的问题
   - 0.0.6 空网址错误处理
   - 0.0.5 太久没写忘记build了...
   - 0.0.4 煞笔腾讯不给发md了艹
@@ -60,7 +61,7 @@ export function apply(ctx: Context, config: Config) {
 
   // 注册指令
   ctx
-    .command("t <itemName>", "查询缺氧中文wiki")
+    .command("x <itemName>", "查询缺氧中文wiki")
     .alias("/查wiki")
     .option("delete", "-d 删除本地缓存", { authority: 2 })
     .action(async ({ session, options }, itemName = "电解器") => {
@@ -86,7 +87,8 @@ export function apply(ctx: Context, config: Config) {
       // 检查本地缓存
 
       if (checkFileExists(filePath)) {
-        return h("img", { src: `${urlPath}` });
+        console.log(urlPath);
+        return h("img", { src: `${encodeURI(urlPath)}` });
       }
       // 主流程
       session.send(`您查询的「${itemName}」进行中,请稍等...`);
@@ -104,7 +106,7 @@ export function apply(ctx: Context, config: Config) {
       if (title[0] === itemName) {
         let res: boolean = await screenShot(itemUrl[0]);
         if (res) {
-          return h("img", { src: `${urlPath}` });
+          return h("img", { src: `${encodeURI(urlPath)}` });
         } else {
           return `截图发生错误.请稍后重试..`;
         }
@@ -122,7 +124,7 @@ export function apply(ctx: Context, config: Config) {
         if (awlist.includes(awser)) {
           let res = await screenShot(itemUrl[awser - 1]);
           if (res) {
-            return h("img", { src: `${urlPath}` });
+            return h("img", { src: `${encodeURI(urlPath)}` });
           } else {
             return `截图发生错误.请稍后重试..`;
           }
