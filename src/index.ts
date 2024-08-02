@@ -32,6 +32,7 @@ export const name = "oni-wiki-qq";
 
 export const inject = ["puppeteer"];
 export const usage = `
+  - 0.0.9 尝试移除导航框,更新koishi依赖
   - 0.0.8 对选择的其他项进行弱智一样的处理,免得 errlog 都快 13M 了
   - 0.0.7 对网址进行编码以确保不会出现奇奇怪怪的问题
   - 0.0.6 空网址错误处理
@@ -184,10 +185,15 @@ export function apply(ctx: Context, config: Config) {
         // 等待一小会儿
         await sleep(2000);
 
-        // 添加详情页边框  mw-parser-output
+        // 添加详情页边框  mw-parser-output   移除 导航框 pi-navbox
         await page.addStyleTag({
           content: "#mw-content-text{padding: 40px}",
         });
+        try {
+          await page.$eval(".pi-navbox", (el) => el.remove());
+        } catch (error) {
+          logger.error(error);
+        }
         const selector = await page.$("#mw-content-text");
         return await selector
           .screenshot({
