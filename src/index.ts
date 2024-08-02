@@ -32,6 +32,7 @@ export const name = "oni-wiki-qq";
 
 export const inject = ["puppeteer"];
 export const usage = `
+  - 0.0.8 对选择的其他项进行弱智一样的处理,免得 errlog 都快 13M 了
   - 0.0.7 对网址进行编码以确保不会出现奇奇怪怪的问题
   - 0.0.6 空网址错误处理
   - 0.0.5 太久没写忘记build了...
@@ -65,8 +66,6 @@ export function apply(ctx: Context, config: Config) {
     .alias("/查wiki")
     .option("delete", "-d 删除本地缓存", { authority: 2 })
     .action(async ({ session, options }, itemName = "电解器") => {
-      logger.info(session.guildId);
-
       const filePath =
         config.imgPath +
         itemName.replace(/\//g, "-").replace(/:/g, "-").replace(/'/g, "-") +
@@ -92,7 +91,7 @@ export function apply(ctx: Context, config: Config) {
       }
       // 主流程
       session.send(`您查询的「${itemName}」进行中,请稍等...`);
-      await sleep(2000);
+      await sleep(500);
 
       const res: string[] = await getWiki(config.api);
       if (res.length == 0) {
@@ -121,15 +120,31 @@ export function apply(ctx: Context, config: Config) {
         const awser =
           +(await session.prompt(50 * 1000))?.replace(/\s+/g, "")?.slice(-1) ||
           NaN;
+
         if (awlist.includes(awser)) {
-          let res = await screenShot(itemUrl[awser - 1]);
-          if (res) {
-            return h("img", { src: `${encodeURI(urlPath)}` });
-          } else {
-            return `截图发生错误.请稍后重试..`;
+          switch (awlist.includes(awser)) {
+            case one == "萌新的骨头汤" && awser == 1:
+              return h("img", {
+                src: `${encodeURI(config.urlPath + one)}.jpeg`,
+              });
+            case two == "" && awser == 2:
+              return h("img", {
+                src: `${encodeURI(config.urlPath + two)}.jpeg`,
+              });
+            case three == "" && awser == 3:
+              return h("img", {
+                src: `${encodeURI(config.urlPath + three)}.jpeg`,
+              });
+            default:
+              let res = await screenShot(itemUrl[awser - 1]);
+              if (res) {
+                return h("img", { src: `${encodeURI(urlPath)}` });
+              } else {
+                return `截图发生错误.请稍后重试..`;
+              }
           }
         } else if (Number.isNaN(awser)) {
-          return `您输入的选项有误，已完结本轮查询。如需，如有需要，请重新发起查询.`;
+          return `您输入的选项有误，已完结本轮查询，如有需要，请重新发起查询.`;
         }
       }
 
@@ -167,7 +182,7 @@ export function apply(ctx: Context, config: Config) {
           timeout: 0,
         });
         // 等待一小会儿
-        await sleep(3000);
+        await sleep(2000);
 
         // 添加详情页边框  mw-parser-output
         await page.addStyleTag({
@@ -183,7 +198,7 @@ export function apply(ctx: Context, config: Config) {
           .then(() => {
             return true;
           })
-          .catch((err) => {
+          .catch(async (err) => {
             logger.error(err);
             return false;
           })
