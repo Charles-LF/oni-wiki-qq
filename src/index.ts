@@ -32,6 +32,7 @@ export const name = "oni-wiki-qq";
 
 export const inject = ["puppeteer"];
 export const usage = `
+  - 0.1.0 添加登录和点击cookies按钮,删除没法判断答案的代码
   - 0.0.9 尝试移除导航框,更新koishi依赖
   - 0.0.8 对选择的其他项进行弱智一样的处理,免得 errlog 都快 13M 了
   - 0.0.7 对网址进行编码以确保不会出现奇奇怪怪的问题
@@ -47,6 +48,16 @@ export interface Config {
   api: string;
   imgPath: string;
   urlPath: string;
+  navSelector: string;
+  contentSelector: string;
+  loginUrl: string;
+  userNameSelector: string;
+  passwordSelector: string;
+  checkBoxSelector: string;
+  userName: string;
+  password: string;
+  mainPage: string;
+  btnSelector: string;
 }
 export const Config: Schema<Config> = Schema.object({
   api: Schema.string()
@@ -56,6 +67,32 @@ export const Config: Schema<Config> = Schema.object({
     .default(os.homedir() + "/wikiImg/")
     .description("图片保存路径"),
   urlPath: Schema.string().description("图片公网访问路径"),
+  navSelector: Schema.string().description("导航框类名").default(".navbox"),
+  contentSelector: Schema.string()
+    .description("内容区选择器")
+    .default("#mw-content-text"),
+  loginUrl: Schema.string()
+    .description("登录页面地址")
+    .default(
+      "https://oxygennotincluded.wiki.gg/zh/index.php?title=Special:%E7%94%A8%E6%88%B7%E7%99%BB%E5%BD%95&returnto=%E9%A6%96%E9%A1%B5"
+    ),
+  userNameSelector: Schema.string()
+    .description("用户名输入区选择器")
+    .default("input[name='wpName']"),
+  passwordSelector: Schema.string()
+    .description("密码输入区选择器")
+    .default("input[name='wpPassword']"),
+  checkBoxSelector: Schema.string()
+    .description("总是保持登录复选框")
+    .default("inpt[name='wpRemeber']"),
+  userName: Schema.string().description("用户名"),
+  password: Schema.string().description("密码"),
+  mainPage: Schema.string()
+    .default("https://oxygennotincluded.wiki.gg/zh/")
+    .description("主页地址"),
+  btnSelector: Schema.string()
+    .default(".NN0_TB_DIsNmMHgJWgT7U")
+    .description("需要点击的按钮选择器"),
 });
 
 export function apply(ctx: Context, config: Config) {
@@ -123,26 +160,11 @@ export function apply(ctx: Context, config: Config) {
           NaN;
 
         if (awlist.includes(awser)) {
-          switch (awlist.includes(awser)) {
-            case one == "萌新的骨头汤" && awser == 1:
-              return h("img", {
-                src: `${encodeURI(config.urlPath + one)}.jpeg`,
-              });
-            case two == "" && awser == 2:
-              return h("img", {
-                src: `${encodeURI(config.urlPath + two)}.jpeg`,
-              });
-            case three == "" && awser == 3:
-              return h("img", {
-                src: `${encodeURI(config.urlPath + three)}.jpeg`,
-              });
-            default:
-              let res = await screenShot(itemUrl[awser - 1]);
-              if (res) {
-                return h("img", { src: `${encodeURI(urlPath)}` });
-              } else {
-                return `截图发生错误.请稍后重试..`;
-              }
+          let res = await screenShot(itemUrl[awser - 1]);
+          if (res) {
+            return h("img", { src: `${encodeURI(urlPath)}` });
+          } else {
+            return `截图发生错误.请稍后重试..`;
           }
         } else if (Number.isNaN(awser)) {
           return `您输入的选项有误，已完结本轮查询，如有需要，请重新发起查询.`;
@@ -190,11 +212,11 @@ export function apply(ctx: Context, config: Config) {
           content: "#mw-content-text{padding: 40px}",
         });
         try {
-          await page.$eval(".pi-navbox", (el) => el.remove());
+          await page.$eval(config.navSelector, (el) => el.remove());
         } catch (error) {
           logger.error(error);
         }
-        const selector = await page.$("#mw-content-text");
+        const selector = await page.$(config.contentSelector);
         return await selector
           .screenshot({
             type: "jpeg",
@@ -211,6 +233,56 @@ export function apply(ctx: Context, config: Config) {
           .finally(async () => await page.close());
       }
     });
+  ctx
+    .command("loginwiki", "使用账户登录", { authority: 4 })
+    .action(async ({ session }) => {
+      const page = await ctx.puppeteer.page();
+      logger.info(`正在前往登录页:${config.loginUrl}`);
+      await page.goto(config.loginUrl, {
+        timeout: 0,
+      });
+      await sleep(4000);
+      logger.info(`输入用户名`);
+      await page.type(config.userNameSelector, config.userName);
+      await sleep(1000);
+      logger.info(`输入密码`);
+      await page.type(config.passwordSelector, config.password);
+      await sleep(1000);
+      logger.info("点击保持登录复选框");
+      await page.click(config.checkBoxSelector);
+      await sleep(1000);
+      await page.click(`button[type="submit"]`);
+      await sleep(6000);
+      const img = await page.screenshot({ type: "jpeg", quality: 50 });
+      session.send(h.image(img, "jpeg/image"));
+      await page.close().then(() => logger.info(`页面已经成功关闭`));
+      return `登录已完成.`;
+    });
+
+  ctx.command("clickBtn").action(async ({ session }) => {
+    const page = await ctx.puppeteer.page();
+    await page.goto(config.mainPage, { timeout: 0 });
+    const selector = await page.$(config.btnSelector);
+
+    await sleep(8000);
+    await selector
+      .click()
+      .then(() => logger.info(`成功点击了按钮`))
+      .catch((err) => logger.info(`出错啦,${err}`));
+    await sleep(8000);
+    await page
+      .click(`button[type="submit"]`)
+      .then(() => logger.info(`点击了按钮`))
+      .catch((err) => logger.error(`出错了,${err}`));
+    await sleep(5000);
+    session.send(
+      h.image(
+        await page.screenshot({ type: "jpeg", quality: 80 }),
+        "jpeg/image"
+      )
+    );
+    page.close;
+  });
 }
 
 function checkFileExists(filePath: string): boolean {
