@@ -133,7 +133,7 @@ export function apply(ctx: Context, config: Config) {
 
       const res: string[] = await getWiki(config.api);
       if (res.length == 0) {
-        return `在Wiki里没找到或API查询超时或....`;
+        return `在Wiki里没找到或API查询超时,如有需要,请按照游戏内名称重新发起查询....`;
       }
 
       const title = [...res[0]];
@@ -148,27 +148,7 @@ export function apply(ctx: Context, config: Config) {
           return `截图发生错误.请稍后重试..`;
         }
       } else {
-        let [one = "萌新的骨头汤", two = "托德的女装", three = "鮟鱇鱼"] =
-          title;
-        session.send(
-          `wiki里没有找到,你可以看看底下有没有你需要的,有,回复数字序号,没有,请等待查询超时减轻服务器压力.\n1.${one}\n2.${two}\n3.${three}`
-        );
-
-        const awlist = [1, 2, 3];
-        const awser =
-          +(await session.prompt(50 * 1000))?.replace(/\s+/g, "")?.slice(-1) ||
-          NaN;
-
-        if (awlist.includes(awser)) {
-          let res = await screenShot(itemUrl[awser - 1]);
-          if (res) {
-            return h("img", { src: `${encodeURI(urlPath)}` });
-          } else {
-            return `截图发生错误.请稍后重试..`;
-          }
-        } else if (Number.isNaN(awser)) {
-          return `您输入的选项有误，已完结本轮查询，如有需要，请重新发起查询.`;
-        }
+        return `没有在wiki内找到${itemName},如有需要,请按照游戏内名称重新发起查询`;
       }
 
       // 从wiki获取查询到的数据
