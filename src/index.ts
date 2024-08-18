@@ -27,21 +27,15 @@ import { Context, Schema, Logger, h, sleep } from "koishi";
 import puppeteer from "koishi-plugin-puppeteer";
 import fs from "fs";
 import os from "node:os";
+import { checkFileExists, getWiki } from "./lib";
 
 export const name = "oni-wiki-qq";
 
 export const inject = ["puppeteer"];
 export const usage = `
+  - 0.2.0 尝试添加 MWN 库
   - 0.1.0 添加登录和点击cookies按钮,删除没法判断答案的代码
   - 0.0.9 尝试移除导航框,更新koishi依赖
-  - 0.0.8 对选择的其他项进行弱智一样的处理,免得 errlog 都快 13M 了
-  - 0.0.7 对网址进行编码以确保不会出现奇奇怪怪的问题
-  - 0.0.6 空网址错误处理
-  - 0.0.5 太久没写忘记build了...
-  - 0.0.4 煞笔腾讯不给发md了艹
-  - 0.0.3 将链接改为md发送以绕过沟腾讯的链接拦截
-  - 0.0.2 基本功能完成
-  - 0.0.1 初始化，明天再慢慢写了（
 `;
 
 export interface Config {
@@ -102,7 +96,7 @@ export function apply(ctx: Context, config: Config) {
   ctx
     .command("x <itemName>", "查询缺氧中文wiki")
     .alias("/查wiki")
-    .option("delete", "-d 删除本地缓存", { authority: 2 })
+    .option("delete", "-d 删除本地缓存", { authority: 1 })
     .action(async ({ session, options }, itemName = "电解器") => {
       const filePath =
         config.imgPath +
@@ -124,58 +118,32 @@ export function apply(ctx: Context, config: Config) {
       // 检查本地缓存
 
       if (checkFileExists(filePath)) {
-        console.log(urlPath);
-        return h("img", { src: `${encodeURI(urlPath)}` });
+        return h(
+          "p",
+          `图片已保存至：${encodeURI(urlPath)}`,
+          h("img", { src: `${encodeURI(urlPath)}` })
+        );
       }
       // 主流程
       session.send(`您查询的「${itemName}」进行中,请稍等...`);
       await sleep(500);
 
-      const res: string[] = await getWiki(config.api);
-      if (res.length == 0) {
+      const res: string = await getWiki(itemName, config);
+      if (!res) {
         return `在Wiki里没找到或API查询超时,如有需要,请按照游戏内名称重新发起查询....`;
       }
+      let screenShotRes: boolean = await screenShot(res);
 
-      const title = [...res[0]];
-      let itemUrl: string[] = [...res[1]];
-      logger.info(`API返回的数据为: ${title}`);
+      logger.info(`API返回的数据为: ${screenShotRes}`);
 
-      if (title[0] === itemName) {
-        let res: boolean = await screenShot(itemUrl[0]);
-        if (res) {
-          return h("img", { src: `${encodeURI(urlPath)}` });
-        } else {
-          return `截图发生错误.请稍后重试..`;
-        }
+      if (screenShotRes) {
+        return h(
+          "p",
+          `图片已保存至：${encodeURI(urlPath)}`,
+          h("img", { src: `${encodeURI(urlPath)}` })
+        );
       } else {
-        return `没有在wiki内找到${itemName},如有需要,请按照游戏内名称重新发起查询`;
-      }
-
-      // 从wiki获取查询到的数据
-      async function getWiki(api: string) {
-        return await ctx.http
-          .get(api, {
-            headers: {
-              "Content-Type": "application/json",
-              "User-Agent":
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36",
-            },
-            params: {
-              action: `opensearch`,
-              search: itemName,
-              limit: 3,
-              redirects: "return",
-              format: "json",
-            },
-          })
-          .then(async (res) => {
-            logger.info(res);
-            return [res[1], res[3]];
-          })
-          .catch((err) => {
-            logger.error(err);
-            return [];
-          });
+        return `截图发生错误.请稍后重试..`;
       }
 
       // 获取截图并保存到本地
@@ -189,7 +157,7 @@ export function apply(ctx: Context, config: Config) {
 
         // 添加详情页边框  mw-parser-output   移除 导航框 pi-navbox
         await page.addStyleTag({
-          content: "#mw-content-text{padding: 40px}",
+          content: `${config.contentSelector}{padding: 40px}`,
         });
         try {
           await page.$eval(config.navSelector, (el) => el.remove());
@@ -214,8 +182,10 @@ export function apply(ctx: Context, config: Config) {
       }
     });
   ctx
-    .command("loginwiki", "使用账户登录", { authority: 4 })
-    .action(async ({ session }) => {
+    .command("loginwiki [BotuserName] <BotPassword>", "使用机器人账户登录", {
+      authority: 4,
+    })
+    .action(async ({ session }, BotuserName = "", BotPassword) => {
       const page = await ctx.puppeteer.page();
       logger.info(`正在前往登录页:${config.loginUrl}`);
       await page.goto(config.loginUrl, {
@@ -223,10 +193,10 @@ export function apply(ctx: Context, config: Config) {
       });
       await sleep(4000);
       logger.info(`输入用户名`);
-      await page.type(config.userNameSelector, config.userName);
+      await page.type(config.userNameSelector, BotuserName);
       await sleep(1000);
       logger.info(`输入密码`);
-      await page.type(config.passwordSelector, config.password);
+      await page.type(config.passwordSelector, BotPassword);
       await sleep(1000);
       logger.info("点击保持登录复选框");
       await page.click(config.checkBoxSelector);
@@ -239,7 +209,7 @@ export function apply(ctx: Context, config: Config) {
       return `登录已完成.`;
     });
 
-  ctx.command("clickBtn").action(async ({ session }) => {
+  ctx.command("clickBtn", { authority: 4 }).action(async ({ session }) => {
     const page = await ctx.puppeteer.page();
     await page.goto(config.mainPage, { timeout: 0 });
     const selector = await page.$(config.btnSelector);
@@ -263,13 +233,4 @@ export function apply(ctx: Context, config: Config) {
     );
     page.close;
   });
-}
-
-function checkFileExists(filePath: string): boolean {
-  try {
-    fs.accessSync(filePath, fs.constants.F_OK);
-    return true;
-  } catch (err) {
-    return false;
-  }
 }
