@@ -33,6 +33,7 @@ export const name = "oni-wiki-qq";
 
 export const inject = ["puppeteer"];
 export const usage = `
+  - 0.2.2 尝试移除顶部导航
   - 0.2.1 交换图片和消息位置以使qq发送时在同一消息避免刷屏
   - 0.2.0 尝试添加 MWN 库
   - 0.1.0 添加登录和点击cookies按钮,删除没法判断答案的代码
@@ -158,6 +159,7 @@ export function apply(ctx: Context, config: Config) {
         });
         try {
           await page.$eval(config.navSelector, (el) => el.remove());
+          await page.$eval("#mw-head", (el) => el.remove());
         } catch (error) {
           // dosomething
           // logger.error(error);
