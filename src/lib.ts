@@ -35,6 +35,7 @@ export async function getWiki(
       format: "json",
     })
     .then(async (res) => {
+      console.log(res);
       // 如果标题一样就直接返回网址，不一样就直接返回false
       if (res[1][0] == itemName) {
         return res[3][0];

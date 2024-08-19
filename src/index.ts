@@ -33,9 +33,9 @@ export const name = "oni-wiki-qq";
 
 export const inject = ["puppeteer"];
 export const usage = `
+  - 0.2.1 交换图片和消息位置以使qq发送时在同一消息避免刷屏
   - 0.2.0 尝试添加 MWN 库
   - 0.1.0 添加登录和点击cookies按钮,删除没法判断答案的代码
-  - 0.0.9 尝试移除导航框,更新koishi依赖
 `;
 
 export interface Config {
@@ -120,13 +120,12 @@ export function apply(ctx: Context, config: Config) {
       if (checkFileExists(filePath)) {
         return h(
           "p",
-          `图片已保存至：${encodeURI(urlPath)}`,
-          h("img", { src: `${encodeURI(urlPath)}` })
+          h("img", { src: `${encodeURI(urlPath)}` }),
+          `图片已保存至：${encodeURI(urlPath)}`
         );
       }
       // 主流程
       session.send(`您查询的「${itemName}」进行中,请稍等...`);
-      await sleep(500);
 
       const res: string = await getWiki(itemName, config);
       if (!res) {
@@ -134,13 +133,11 @@ export function apply(ctx: Context, config: Config) {
       }
       let screenShotRes: boolean = await screenShot(res);
 
-      logger.info(`API返回的数据为: ${screenShotRes}`);
-
       if (screenShotRes) {
         return h(
           "p",
-          `图片已保存至：${encodeURI(urlPath)}`,
-          h("img", { src: `${encodeURI(urlPath)}` })
+          h("img", { src: `${encodeURI(urlPath)}` }),
+          `图片已保存至：${encodeURI(urlPath)}`
         );
       } else {
         return `截图发生错误.请稍后重试..`;
@@ -162,19 +159,20 @@ export function apply(ctx: Context, config: Config) {
         try {
           await page.$eval(config.navSelector, (el) => el.remove());
         } catch (error) {
-          logger.error(error);
+          // dosomething
+          // logger.error(error);
         }
         const selector = await page.$(config.contentSelector);
         return await selector
           .screenshot({
             type: "jpeg",
-            quality: 50,
+            quality: 60,
             path: filePath,
           })
           .then(() => {
             return true;
           })
-          .catch(async (err) => {
+          .catch((err) => {
             logger.error(err);
             return false;
           })
@@ -227,7 +225,7 @@ export function apply(ctx: Context, config: Config) {
     await sleep(5000);
     session.send(
       h.image(
-        await page.screenshot({ type: "jpeg", quality: 80 }),
+        await page.screenshot({ type: "jpeg", quality: 75 }),
         "jpeg/image"
       )
     );
