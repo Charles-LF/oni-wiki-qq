@@ -29,6 +29,7 @@ import { Mwn } from "mwn";
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.3.3 所有网址处理
   - 0.3.2 网址加白处理
   - 0.3.1 错别字修改
   - 0.3.0 移除耗内存的截图部分,使用镜像站点网页
@@ -48,13 +49,13 @@ export const Config: Schema<Config> = Schema.object({
     .default("https://oxygennotincluded.wiki.gg/zh/api.php")
     .description("api地址"),
   originalUrl: Schema.string()
-    .default("https://oxygennotincluded.wiki.gg/zh/")
+    .default("https://oxygennotincluded.wiki.gg/zh/wiki/")
     .description("原站点网址"),
   mirrorUrl: Schema.string()
-    .default("https://wiki.biligame.com/oni/")
+    .default("https://klei.vip/oni/usiz6d/")
     .description("镜像站点网址"),
   docUrl: Schema.string()
-    .default("https://www.yuque.com/u25332524/ftq4u7")
+    .default("klei.vip/oni/926f8b")
     .description("大叔的文档地址"),
   userName: Schema.string().description("机器人用户名"),
   password: Schema.string().description("机器人密码"),
@@ -75,11 +76,10 @@ export function apply(ctx: Context, config: Config) {
       if (!res) {
         return `在Wiki里没找到或API查询超时,如有需要,请按照游戏内名称重新发起查询....`;
       }
-      return `请点击链接前往站点查看:\n原站点: ${encodeURI(
-        res.replace(config.originalUrl, "https://oni.wiki/")
-      )}\n镜像站: ${encodeURI(
-        res.replace(config.originalUrl, config.mirrorUrl)
-      )}`;
+      return `请点击链接前往站点查看:\n原站点: ${res.replace(
+        config.originalUrl,
+        "https://oni.wiki/"
+      )}\n镜像站: ${res.replace(config.originalUrl, config.mirrorUrl)}`;
     });
   async function getWiki(itemName: string): Promise<string> {
     const bot: Mwn = await Mwn.init({
