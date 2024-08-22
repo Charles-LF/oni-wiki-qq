@@ -24,15 +24,12 @@
 //                  佛曰: 能跑就行
 
 import { Context, Schema, Logger, h, sleep } from "koishi";
-import puppeteer from "koishi-plugin-puppeteer";
-import fs from "fs";
-import os from "node:os";
-import { checkFileExists, getWiki } from "./lib";
+import { Mwn } from "mwn";
 
 export const name = "oni-wiki-qq";
 
-export const inject = ["puppeteer"];
 export const usage = `
+  - 0.3.0 移除耗内存的截图部分,使用镜像站点网页
   - 0.2.3 搞错了,重来
   - 0.2.2 尝试移除顶部导航
   - 0.2.1 交换图片和消息位置以使qq发送时在同一消息避免刷屏
@@ -41,57 +38,27 @@ export const usage = `
 
 export interface Config {
   api: string;
-  imgPath: string;
-  urlPath: string;
-  navSelector: string;
-  navSelector2: string;
-  contentSelector: string;
-  loginUrl: string;
-  userNameSelector: string;
-  passwordSelector: string;
-  checkBoxSelector: string;
+  originalUrl: string;
+  mirrorUrl: string;
+  docUrl: string;
   userName: string;
   password: string;
-  mainPage: string;
-  btnSelector: string;
 }
 export const Config: Schema<Config> = Schema.object({
   api: Schema.string()
     .default("https://oxygennotincluded.wiki.gg/zh/api.php")
     .description("api地址"),
-  imgPath: Schema.string()
-    .default(os.homedir() + "/wikiImg/")
-    .description("图片保存路径"),
-  urlPath: Schema.string().description("图片公网访问路径"),
-  navSelector: Schema.string().description("导航框类名").default(".navbox"),
-  navSelector2: Schema.string()
-    .description("导航框类名")
-    .default("#wikigg-header"),
-  contentSelector: Schema.string()
-    .description("内容区选择器")
-    .default("#mw-content-text"),
-  loginUrl: Schema.string()
-    .description("登录页面地址")
-    .default(
-      "https://oxygennotincluded.wiki.gg/zh/index.php?title=Special:%E7%94%A8%E6%88%B7%E7%99%BB%E5%BD%95&returnto=%E9%A6%96%E9%A1%B5"
-    ),
-  userNameSelector: Schema.string()
-    .description("用户名输入区选择器")
-    .default("input[name='wpName']"),
-  passwordSelector: Schema.string()
-    .description("密码输入区选择器")
-    .default("input[name='wpPassword']"),
-  checkBoxSelector: Schema.string()
-    .description("总是保持登录复选框")
-    .default("inpt[name='wpRemeber']"),
-  userName: Schema.string().description("用户名"),
-  password: Schema.string().description("密码"),
-  mainPage: Schema.string()
+  originalUrl: Schema.string()
     .default("https://oxygennotincluded.wiki.gg/zh/")
-    .description("主页地址"),
-  btnSelector: Schema.string()
-    .default(".NN0_TB_DIsNmMHgJWgT7U")
-    .description("需要点击的按钮选择器"),
+    .description("原站点网址"),
+  mirrorUrl: Schema.string()
+    .default("https://wiki.biligame.com/oni/")
+    .description("镜像站点网址"),
+  docUrl: Schema.string()
+    .default("https://www.yuque.com/u25332524/ftq4u7")
+    .description("大叔的文档地址"),
+  userName: Schema.string().description("机器人用户名"),
+  password: Schema.string().description("机器人密码"),
 });
 
 export function apply(ctx: Context, config: Config) {
@@ -101,140 +68,53 @@ export function apply(ctx: Context, config: Config) {
   ctx
     .command("x <itemName>", "查询缺氧中文wiki")
     .alias("/查wiki")
-    .option("delete", "-d 删除本地缓存", { authority: 1 })
-    .action(async ({ session, options }, itemName = "电解器") => {
-      const filePath =
-        config.imgPath +
-        itemName.replace(/\//g, "-").replace(/:/g, "-").replace(/'/g, "-") +
-        ".jpeg";
-
-      const urlPath =
-        config.urlPath +
-        itemName.replace(/\//g, "-").replace(/:/g, "-").replace(/'/g, "-") +
-        ".jpeg";
-      if (options.delete) {
-        if (checkFileExists(filePath)) {
-          fs.unlinkSync(filePath);
-          return `已尝试删除${itemName}的缓存...`;
-        } else {
-          return `文件不存在.请检查....`;
-        }
-      }
-      // 检查本地缓存
-
-      if (checkFileExists(filePath)) {
-        return h(
-          "p",
-          h("img", { src: `${encodeURI(urlPath)}` }),
-          `图片已保存至：${encodeURI(urlPath)}`
-        );
-      }
-      // 主流程
+    .action(async ({ session }, itemName = "电解器") => {
       session.send(`您查询的「${itemName}」进行中,请稍等...`);
 
-      const res: string = await getWiki(itemName, config);
+      const res: string = await getWiki(itemName);
+
       if (!res) {
         return `在Wiki里没找到或API查询超时,如有需要,请按照游戏内名称重新发起查询....`;
       }
-      let screenShotRes: boolean = await screenShot(res);
-
-      if (screenShotRes) {
-        return h(
-          "p",
-          h("img", { src: `${encodeURI(urlPath)}` }),
-          `图片已保存至：${encodeURI(urlPath)}`
-        );
-      } else {
-        return `截图发生错误.请稍后重试..`;
-      }
-
-      // 获取截图并保存到本地
-      async function screenShot(url: string) {
-        const page = await ctx.puppeteer.page();
-        await page.goto(url, {
-          timeout: 0,
-        });
-        // 等待一小会儿
-        await sleep(2000);
-
-        // 添加详情页边框  mw-parser-output   移除 导航框 pi-navbox
-        await page.addStyleTag({
-          content: `${config.contentSelector}{padding: 40px}`,
-        });
-        try {
-          await page.$eval(config.navSelector, (el) => el.remove());
-          await page.$eval(config.navSelector2, (el) => el.remove());
-        } catch (error) {
-          // dosomething
-          // logger.error(error);
+      return `请点击连接诶前往站点查看:\n原站点: ${encodeURI(
+        res
+      )}\n镜像站: ${encodeURI(
+        res.replace(config.originalUrl, config.mirrorUrl)
+      )}`;
+    });
+  async function getWiki(itemName: string): Promise<string> {
+    const bot: Mwn = await Mwn.init({
+      apiUrl: config.api,
+      username: config.userName,
+      password: config.password,
+      userAgent: "queryBot 0.0.3 ([[user:Charles-lf]])",
+      defaultParams: {
+        assert: "user",
+      },
+    });
+    return await bot
+      .request({
+        action: "opensearch",
+        search: itemName,
+        namespace: "*",
+        limit: 3,
+        redirects: "return",
+        format: "json",
+      })
+      .then(async (res) => {
+        logger.info(res);
+        if (res[1][0] == itemName) {
+          return res[3][0];
+        } else {
+          return "";
         }
-        const selector = await page.$(config.contentSelector);
-        return await selector
-          .screenshot({
-            type: "jpeg",
-            quality: 60,
-            path: filePath,
-          })
-          .then(() => {
-            return true;
-          })
-          .catch((err) => {
-            logger.error(err);
-            return false;
-          })
-          .finally(async () => await page.close());
-      }
-    });
+      })
+      .catch(async (err) => console.log(err));
+  }
   ctx
-    .command("loginwiki [BotuserName] <BotPassword>", "使用机器人账户登录", {
-      authority: 4,
-    })
-    .action(async ({ session }, BotuserName = "", BotPassword) => {
-      const page = await ctx.puppeteer.page();
-      logger.info(`正在前往登录页:${config.loginUrl}`);
-      await page.goto(config.loginUrl, {
-        timeout: 0,
-      });
-      await sleep(4000);
-      logger.info(`输入用户名`);
-      await page.type(config.userNameSelector, BotuserName);
-      await sleep(1000);
-      logger.info(`输入密码`);
-      await page.type(config.passwordSelector, BotPassword);
-      await sleep(1000);
-      logger.info("点击保持登录复选框");
-      await page.click(config.checkBoxSelector);
-      await sleep(1000);
-      await page.click(`button[type="submit"]`);
-      await sleep(6000);
-      const img = await page.screenshot({ type: "jpeg", quality: 50 });
-      session.send(h.image(img, "jpeg/image"));
-      await page.close().then(() => logger.info(`页面已经成功关闭`));
-      return `登录已完成.`;
+    .command("doc", "大叔的文档链接")
+    .alias("/大叔文档")
+    .action(async () => {
+      return `大叔的文档链接:\n ${config.docUrl}`;
     });
-
-  ctx.command("clickBtn", { authority: 4 }).action(async ({ session }) => {
-    const page = await ctx.puppeteer.page();
-    await page.goto(config.mainPage, { timeout: 0 });
-    const selector = await page.$(config.btnSelector);
-
-    await sleep(8000);
-    await selector
-      .click()
-      .then(() => logger.info(`成功点击了按钮`))
-      .catch((err) => logger.info(`出错啦,${err}`));
-    await sleep(8000);
-    await page
-      .click(`button[type="submit"]`)
-      .then(() => logger.info(`点击了按钮`))
-      .catch((err) => logger.error(`出错了,${err}`));
-    await sleep(5000);
-    session.send(
-      h.image(
-        await page.screenshot({ type: "jpeg", quality: 75 }),
-        "jpeg/image"
-      )
-    );
-    page.close;
-  });
 }
