@@ -29,6 +29,7 @@ import { Mwn } from "mwn";
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.3.2 网址加白处理
   - 0.3.1 错别字修改
   - 0.3.0 移除耗内存的截图部分,使用镜像站点网页
   - 0.2.0 尝试添加 MWN 库
@@ -75,7 +76,7 @@ export function apply(ctx: Context, config: Config) {
         return `在Wiki里没找到或API查询超时,如有需要,请按照游戏内名称重新发起查询....`;
       }
       return `请点击链接前往站点查看:\n原站点: ${encodeURI(
-        res
+        res.replace(config.originalUrl, "https://oni.wiki/")
       )}\n镜像站: ${encodeURI(
         res.replace(config.originalUrl, config.mirrorUrl)
       )}`;
@@ -107,7 +108,10 @@ export function apply(ctx: Context, config: Config) {
           return "";
         }
       })
-      .catch(async (err) => console.log(err));
+      .catch(async (err) => console.log(err))
+      .finally(async () => {
+        bot.logout();
+      });
   }
   ctx
     .command("doc", "大叔的文档链接")
