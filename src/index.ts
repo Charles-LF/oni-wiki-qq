@@ -29,10 +29,8 @@ import { Mwn } from "mwn";
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.3.1 错别字修改
   - 0.3.0 移除耗内存的截图部分,使用镜像站点网页
-  - 0.2.3 搞错了,重来
-  - 0.2.2 尝试移除顶部导航
-  - 0.2.1 交换图片和消息位置以使qq发送时在同一消息避免刷屏
   - 0.2.0 尝试添加 MWN 库
 `;
 
@@ -76,7 +74,7 @@ export function apply(ctx: Context, config: Config) {
       if (!res) {
         return `在Wiki里没找到或API查询超时,如有需要,请按照游戏内名称重新发起查询....`;
       }
-      return `请点击连接诶前往站点查看:\n原站点: ${encodeURI(
+      return `请点击链接前往站点查看:\n原站点: ${encodeURI(
         res
       )}\n镜像站: ${encodeURI(
         res.replace(config.originalUrl, config.mirrorUrl)
