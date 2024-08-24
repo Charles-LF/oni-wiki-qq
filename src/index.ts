@@ -78,7 +78,7 @@ export function apply(ctx: Context, config: Config) {
       }
       return `请点击链接前往站点查看:\n原站点: ${res.replace(
         config.originalUrl,
-        "https://oni.wiki/"
+        "http://oni.wiki/"
       )}\n镜像站: ${res.replace(config.originalUrl, config.mirrorUrl)}`;
     });
   async function getWiki(itemName: string): Promise<string> {
