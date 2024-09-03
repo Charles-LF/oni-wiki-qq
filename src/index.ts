@@ -29,9 +29,8 @@ import { Mwn } from "mwn";
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.3.4 添加火箭计算器地址
   - 0.3.3 所有网址处理
-  - 0.3.2 网址加白处理
-  - 0.3.1 错别字修改
   - 0.3.0 移除耗内存的截图部分,使用镜像站点网页
   - 0.2.0 尝试添加 MWN 库
 `;
@@ -43,6 +42,7 @@ export interface Config {
   docUrl: string;
   userName: string;
   password: string;
+  Rocket_Calculator: string;
 }
 export const Config: Schema<Config> = Schema.object({
   api: Schema.string()
@@ -59,6 +59,9 @@ export const Config: Schema<Config> = Schema.object({
     .description("大叔的文档地址"),
   userName: Schema.string().description("机器人用户名"),
   password: Schema.string().description("机器人密码"),
+  Rocket_Calculator: Schema.string()
+    .description("火箭计算器地址")
+    .default("https://klei.vip/oni/t93o56"),
 });
 
 export function apply(ctx: Context, config: Config) {
@@ -118,5 +121,11 @@ export function apply(ctx: Context, config: Config) {
     .alias("/大叔文档")
     .action(async () => {
       return `大叔的文档链接:\n ${config.docUrl}`;
+    });
+  ctx
+    .command("RocketCalculator", "火箭计算器")
+    .alias("火箭计算器")
+    .action(async () => {
+      return `火箭计算器链接:\n ${config.Rocket_Calculator}`;
     });
 }
