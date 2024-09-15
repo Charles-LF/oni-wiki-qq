@@ -28,9 +28,8 @@ import { Context, Schema, Logger } from "koishi";
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.4.1 增加/的处理
   - 0.4.0 移除MWN.将查询处理改至查询数据库
-  - 0.3.4 添加火箭计算器地址
-  - 0.3.3 所有网址处理
   - 0.3.0 移除耗内存的截图部分,使用镜像站点网页
   - 0.2.0 尝试添加 MWN 库
 `;
@@ -79,7 +78,7 @@ export function apply(ctx: Context, config: Config) {
     .action(async ({ session }, itemName = "电解器") => {
       session.send(`您查询的「${itemName}」进行中,请稍等...`);
       const res = await ctx.database.get("wikipages", {
-        title: [`${itemName}`],
+        title: [`${itemName.replace("/", "-")}`],
       });
       logger.info(res);
       if (res.length == 0) {
