@@ -23,49 +23,54 @@
 //          本来无BUG            何必常修改
 //                  佛曰: 能跑就行
 
-import { Context, Schema, Logger, h, sleep } from "koishi";
-import { Mwn } from "mwn";
+import { Context, Schema, Logger } from "koishi";
 
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.4.0 移除MWN.将查询处理改至查询数据库
   - 0.3.4 添加火箭计算器地址
   - 0.3.3 所有网址处理
   - 0.3.0 移除耗内存的截图部分,使用镜像站点网页
   - 0.2.0 尝试添加 MWN 库
 `;
 
+export const inject = ["database"];
+
+// 数据库声明
+declare module "koishi" {
+  interface Tables {
+    wikipages: WikiPages;
+  }
+}
+
+export interface WikiPages {
+  id: number;
+  title: string;
+}
+
+// 配置项
 export interface Config {
-  api: string;
-  originalUrl: string;
-  mirrorUrl: string;
   docUrl: string;
-  userName: string;
-  password: string;
   Rocket_Calculator: string;
+  SESSDATA: string;
 }
 export const Config: Schema<Config> = Schema.object({
-  api: Schema.string()
-    .default("https://oxygennotincluded.wiki.gg/zh/api.php")
-    .description("api地址"),
-  originalUrl: Schema.string()
-    .default("https://oxygennotincluded.wiki.gg/zh/wiki/")
-    .description("原站点网址"),
-  mirrorUrl: Schema.string()
-    .default("https://klei.vip/oni/usiz6d/")
-    .description("镜像站点网址"),
   docUrl: Schema.string()
     .default("klei.vip/oni/926f8b")
     .description("大叔的文档地址"),
-  userName: Schema.string().description("机器人用户名"),
-  password: Schema.string().description("机器人密码"),
   Rocket_Calculator: Schema.string()
     .description("火箭计算器地址")
     .default("https://klei.vip/oni/t93o56"),
+  SESSDATA: Schema.string().description("SESSDATA"),
 });
 
 export function apply(ctx: Context, config: Config) {
   const logger = ctx.logger;
+  ctx.model.extend("wikipages", {
+    id: "integer",
+    title: "string",
+  });
 
   // 注册指令
   ctx
@@ -73,49 +78,46 @@ export function apply(ctx: Context, config: Config) {
     .alias("/查wiki")
     .action(async ({ session }, itemName = "电解器") => {
       session.send(`您查询的「${itemName}」进行中,请稍等...`);
-
-      const res: string = await getWiki(itemName);
-
-      if (!res) {
+      const res = await ctx.database.get("wikipages", {
+        title: [`${itemName}`],
+      });
+      logger.info(res);
+      if (res.length == 0) {
         return `在Wiki里没找到或API查询超时,如有需要,请按照游戏内名称重新发起查询....`;
       }
-      return `请点击链接前往站点查看:\n原站点: ${res.replace(
-        config.originalUrl,
-        "http://oni.wiki/"
-      )}\n镜像站: ${res.replace(config.originalUrl, config.mirrorUrl)}`;
+      return `请点击链接前往站点查看:\n原站点:  http://oni.wiki/${encodeURI(
+        itemName
+      )}\n镜像站:  https://klei.vip/oni/usiz6d/${encodeURI(itemName)}`;
     });
-  async function getWiki(itemName: string): Promise<string> {
-    const bot: Mwn = await Mwn.init({
-      apiUrl: config.api,
-      username: config.userName,
-      password: config.password,
-      userAgent: "queryBot 0.0.3 ([[user:Charles-lf]])",
-      defaultParams: {
-        assert: "user",
-      },
+
+  ctx
+    .command("update", "更新本地页面缓存", { authority: 2 })
+    .action(async () => {
+      const url = `https://wiki.biligame.com/oni/api.php?action=query&list=allpages&aplimit=5000&format=json`;
+      return await ctx.http
+        .get(url, {
+          headers: {
+            "Content-Type": "application/json",
+            "user-agent": "Charles'queryBot",
+            Cookie: `SESSDATA=${config.SESSDATA}`,
+          },
+        })
+        .then((res) => {
+          console.log(res["query"]["allpages"]);
+          res["query"]["allpages"].forEach(async (element) => {
+            console.log(element.title);
+            await ctx.database.upsert("wikipages", (row) => [
+              { id: element.pageid, title: element.title.replace("/", "-") },
+            ]);
+          });
+          return `更新已完成,已尝试写入数据库}`;
+        })
+        .catch((err) => {
+          console.log(err);
+          return `出现了一点点问题`;
+        });
     });
-    return await bot
-      .request({
-        action: "opensearch",
-        search: itemName,
-        namespace: "*",
-        limit: 3,
-        redirects: "return",
-        format: "json",
-      })
-      .then(async (res) => {
-        logger.info(res);
-        if (res[1][0] == itemName) {
-          return res[3][0];
-        } else {
-          return "";
-        }
-      })
-      .catch(async (err) => console.log(err))
-      .finally(async () => {
-        bot.logout();
-      });
-  }
+
   ctx
     .command("doc", "大叔的文档链接")
     .alias("/大叔文档")
