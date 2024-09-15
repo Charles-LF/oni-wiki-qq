@@ -28,6 +28,7 @@ import { Context, Schema, Logger } from "koishi";
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.4.2 修改/ 的使用方式,改为 >
   - 0.4.1 增加/的处理
   - 0.4.0 移除MWN.将查询处理改至查询数据库
   - 0.3.0 移除耗内存的截图部分,使用镜像站点网页
@@ -78,7 +79,7 @@ export function apply(ctx: Context, config: Config) {
     .action(async ({ session }, itemName = "电解器") => {
       session.send(`您查询的「${itemName}」进行中,请稍等...`);
       const res = await ctx.database.get("wikipages", {
-        title: [`${itemName.replace("/", "-")}`],
+        title: [`${itemName.replace("/", ">")}`],
       });
       logger.info(res);
       if (res.length == 0) {
@@ -106,7 +107,7 @@ export function apply(ctx: Context, config: Config) {
           res["query"]["allpages"].forEach(async (element) => {
             console.log(element.title);
             await ctx.database.upsert("wikipages", (row) => [
-              { id: element.pageid, title: element.title.replace("/", "-") },
+              { id: element.pageid, title: element.title.replace("/", ">") },
             ]);
           });
           return `更新已完成,已尝试写入数据库}`;
