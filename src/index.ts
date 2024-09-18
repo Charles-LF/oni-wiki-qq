@@ -23,11 +23,12 @@
 //          本来无BUG            何必常修改
 //                  佛曰: 能跑就行
 
-import { Context, Schema, Logger } from "koishi";
+import { Context, Schema, Logger, Time, $ } from "koishi";
 
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.4.3 收集搜索的词汇频率
   - 0.4.2 修改/ 的使用方式,改为 >
   - 0.4.1 增加/的处理
   - 0.4.0 移除MWN.将查询处理改至查询数据库
@@ -40,7 +41,8 @@ export const inject = ["database"];
 // 数据库声明
 declare module "koishi" {
   interface Tables {
-    wikipages: WikiPages;
+    wikipages: WikiPages; // 全部页面
+    searchpages: searchPages; // 搜索词
   }
 }
 
@@ -49,35 +51,49 @@ export interface WikiPages {
   title: string;
 }
 
+export interface searchPages {
+  id: number;
+  title: string;
+  time: string;
+}
+
 // 配置项
 export interface Config {
-  docUrl: string;
-  Rocket_Calculator: string;
   SESSDATA: string;
 }
 export const Config: Schema<Config> = Schema.object({
-  docUrl: Schema.string()
-    .default("klei.vip/oni/926f8b")
-    .description("大叔的文档地址"),
-  Rocket_Calculator: Schema.string()
-    .description("火箭计算器地址")
-    .default("https://klei.vip/oni/t93o56"),
   SESSDATA: Schema.string().description("SESSDATA"),
 });
 
 export function apply(ctx: Context, config: Config) {
   const logger = ctx.logger;
+
   ctx.model.extend("wikipages", {
     id: "integer",
     title: "string",
   });
+  ctx.model.extend(
+    "searchpages",
+    {
+      id: "unsigned",
+      title: "string",
+      time: "string",
+    },
+    {
+      primary: "id",
+      autoInc: true,
+    }
+  );
 
   // 注册指令
   ctx
     .command("x <itemName>", "查询缺氧中文wiki")
     .alias("/查wiki")
     .action(async ({ session }, itemName = "电解器") => {
-      session.send(`您查询的「${itemName}」进行中,请稍等...`);
+      await ctx.database.create("searchpages", {
+        title: itemName,
+        time: Time.template("yyyy-MM-dd hh:mm:ss", new Date()),
+      });
       const res = await ctx.database.get("wikipages", {
         title: [`${itemName.replace("/", ">")}`],
       });
@@ -106,7 +122,7 @@ export function apply(ctx: Context, config: Config) {
           console.log(res["query"]["allpages"]);
           res["query"]["allpages"].forEach(async (element) => {
             console.log(element.title);
-            await ctx.database.upsert("wikipages", (row) => [
+            await ctx.database.upsert("wikipages", () => [
               { id: element.pageid, title: element.title.replace("/", ">") },
             ]);
           });
@@ -122,12 +138,24 @@ export function apply(ctx: Context, config: Config) {
     .command("doc", "大叔的文档链接")
     .alias("/大叔文档")
     .action(async () => {
-      return `大叔的文档链接:\n ${config.docUrl}`;
+      return `大叔的文档链接:\n https://klei.vip/oni/926f8b`;
     });
   ctx
     .command("RocketCalculator", "火箭计算器")
     .alias("火箭计算器")
     .action(async () => {
-      return `火箭计算器链接:\n ${config.Rocket_Calculator}`;
+      return `火箭计算器链接:\n https://klei.vip/oni/t93o56`;
     });
+  // ctx
+  //   .command("frequency", "获取本月搜索次数最高的10位")
+  //   .alias("搜索频率")
+  //   .action(async ({ session }) => {
+  //     let now = Time.template("yyyy-MM-dd hh:mm:ss", new Date());
+  //     let a = await ctx.database
+  //       .select("searchpages")
+  //       .where((row) => $.gt(row.time, now))
+  //       .orderBy((row) => row.id)
+  //       .execute();
+  //     console.log(a);
+  //   });
 }
