@@ -116,14 +116,7 @@ export function apply(ctx: Context, config: Config) {
   ctx
     .command("update", "更新本地页面缓存", { authority: 2 })
     .action(async () => {
-      const headers = {
-        "Content-Type": "application/json",
-        "user-agent": "Charles'queryBot",
-        Cookie: `SESSDATA=${config.SESSDATA}`,
-      };
-
-      const url = `https://wiki.biligame.com/oni/api.php?action=query&list=allpages&apnamespace=0&aplimit=5000&format=json`;
-
+      const url = `https://wiki.biligame.com/oni/api.php?action=query&list=allpages&aplimit=5000&format=json`;
       return await ctx.http
         .get(url, {
           headers: headers,
