@@ -28,6 +28,7 @@ import { Context, Schema, Logger, Time, $ } from "koishi";
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.4.5 检测教程页面
   - 0.4.4 加入用户页面
   - 0.4.3 收集搜索的词汇频率
   - 0.4.2 修改/ 的使用方式,改为 >
@@ -91,6 +92,11 @@ export function apply(ctx: Context, config: Config) {
     .command("x <itemName>", "查询缺氧中文wiki")
     .alias("/查wiki")
     .action(async ({ session }, itemName = "电解器") => {
+      if (/教程/.test(itemName)) {
+        return `请点击链接前往站点查看:\n原站点:  http://oni.wiki/${encodeURI(
+          `教程`
+        )}\n镜像站:  https://klei.vip/oni/usiz6d/${encodeURI(`教程`)}`;
+      }
       await ctx.database.create("searchpages", {
         title: itemName,
         time: Time.template("yyyy-MM-dd hh:mm:ss", new Date()),
@@ -117,15 +123,7 @@ export function apply(ctx: Context, config: Config) {
       };
 
       const url = `https://wiki.biligame.com/oni/api.php?action=query&list=allpages&apnamespace=0&aplimit=5000&format=json`;
-      const user = `https://wiki.biligame.com/oni/api.php?action=query&list=allpages&apnamespace=2&aplimit=5000&format=json`;
-      await ctx.http.get(user, { headers: headers }).then((res) => {
-        res["query"]["allpages"].forEach(async (element) => {
-          console.log(element.title);
-          await ctx.database.upsert("wikipages", () => [
-            { id: element.pageid, title: element.title },
-          ]);
-        });
-      });
+
       return await ctx.http
         .get(url, {
           headers: headers,
