@@ -28,6 +28,7 @@ import { Context, Schema, Logger, Time, $ } from "koishi";
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.4.4 加入用户页面
   - 0.4.3 收集搜索的词汇频率
   - 0.4.2 修改/ 的使用方式,改为 >
   - 0.4.1 增加/的处理
@@ -95,11 +96,11 @@ export function apply(ctx: Context, config: Config) {
         time: Time.template("yyyy-MM-dd hh:mm:ss", new Date()),
       });
       const res = await ctx.database.get("wikipages", {
-        title: [`${itemName.replace("/", ">")}`],
+        title: [`${itemName}`],
       });
       logger.info(res);
       if (res.length == 0) {
-        return `在Wiki里没找到或API查询超时,如有需要,请按照游戏内名称重新发起查询....`;
+        return `在Wiki里没找到,如有需要,请按照游戏内名称重新发起查询....`;
       }
       return `请点击链接前往站点查看:\n原站点:  http://oni.wiki/${encodeURI(
         itemName
@@ -109,21 +110,32 @@ export function apply(ctx: Context, config: Config) {
   ctx
     .command("update", "更新本地页面缓存", { authority: 2 })
     .action(async () => {
-      const url = `https://wiki.biligame.com/oni/api.php?action=query&list=allpages&aplimit=5000&format=json`;
+      const headers = {
+        "Content-Type": "application/json",
+        "user-agent": "Charles'queryBot",
+        Cookie: `SESSDATA=${config.SESSDATA}`,
+      };
+
+      const url = `https://wiki.biligame.com/oni/api.php?action=query&list=allpages&apnamespace=0&aplimit=5000&format=json`;
+      const user = `https://wiki.biligame.com/oni/api.php?action=query&list=allpages&apnamespace=2&aplimit=5000&format=json`;
+      await ctx.http.get(user, { headers: headers }).then((res) => {
+        res["query"]["allpages"].forEach(async (element) => {
+          console.log(element.title);
+          await ctx.database.upsert("wikipages", () => [
+            { id: element.pageid, title: element.title },
+          ]);
+        });
+      });
       return await ctx.http
         .get(url, {
-          headers: {
-            "Content-Type": "application/json",
-            "user-agent": "Charles'queryBot",
-            Cookie: `SESSDATA=${config.SESSDATA}`,
-          },
+          headers: headers,
         })
         .then((res) => {
           console.log(res["query"]["allpages"]);
           res["query"]["allpages"].forEach(async (element) => {
             console.log(element.title);
             await ctx.database.upsert("wikipages", () => [
-              { id: element.pageid, title: element.title.replace("/", ">") },
+              { id: element.pageid, title: element.title },
             ]);
           });
           return `更新已完成,已尝试写入数据库}`;
