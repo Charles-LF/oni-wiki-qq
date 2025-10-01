@@ -59,6 +59,7 @@ export const Config: Schema<Config> = Schema.object({
 
 export function apply(ctx: Context, config: Config) {
   const logger = ctx.logger;
+  let wikibot: Mwn;
 
   ctx.model.extend("wikipages", {
     id: "integer",
@@ -86,40 +87,48 @@ export function apply(ctx: Context, config: Config) {
       )}\n镜像站:  http://klei.vip/oni/usiz6d/${encodeURI(itemName)}`;
     });
 
-  ctx.command("update", "更新本地页面缓存", { authority: 2 }).action(async ({ session }) => {
-    const bot = new Mwn({
+  // 启动时登录
+  ctx.on("ready", async () => {
+    wikibot = new Mwn({
       apiUrl: 'https://oxygennotincluded.wiki.gg/zh/api.php',
       username: config.bot_username,
       password: config.bot_password,
-      userAgent: 'Charles`Bot/2.1 Charles@klei.vip',
+      userAgent: 'Charles`Bot/2.1',
       defaultParams: {
         assert: 'user'
       }
     });
-    bot.login().then(async () => {
-      logger.info('登录成功');
-      bot.request({
-        action: 'query',
-        list: 'allpages',
-        format: 'json',
-        aplimit: 'max'
-      }).then((res) => {
-        logger.info('查询成功');
-        const pages = res.query.allpages;
-        pages.forEach((page) => {
-          ctx.database.upsert('wikipages', () => [
-            { id: page.pageid, title: page.title },
-          ]);
-        });
-        session.send(`检索到 ${pages.length} 个页面，已尝试更新至数据库`);
-        logger.info(`检索到 ${pages.length} 个页面，已尝试更新至数据库`);
-
-      }).catch((err) => {
-        logger.error('查询失败', err);
-      });
-
+    wikibot.login().then(() => {
+      logger.info('Wiki机器人登录成功');
     }).catch((err) => {
-      logger.error('登录失败', err);
+      logger.error('Wiki机器人登录失败', err);
     });
-  })
+  });
+
+  ctx.command("update", "更新本地页面缓存", { authority: 2 }).action(async ({ session }) => {
+    wikibot.request({
+      action: 'query',
+      list: 'allpages',
+      format: 'json',
+      aplimit: 'max'
+    }).then((res) => {
+      logger.info('查询成功');
+      const pages = res.query.allpages;
+      pages.forEach((page) => {
+        ctx.database.upsert('wikipages', () => [
+          { id: page.pageid, title: page.title },
+        ]);
+      });
+      session.send(`检索到 ${pages.length} 个页面，已尝试更新至数据库`);
+      logger.info(`检索到 ${pages.length} 个页面，已尝试更新至数据库`);
+    }).catch((err) => {
+      logger.error('查询失败', err);
+    });
+  });
+  ctx.command("update.delete", " 删除本地页面缓存", { authority: 4 }).action(async ({ session }) => {
+    const count = await ctx.database.remove('wikipages', {});
+    session.send(`已删除 ${count.removed} 条本地缓存`);
+    logger.info(`已删除 ${count.removed} 条本地缓存`);
+  });
 }
+
