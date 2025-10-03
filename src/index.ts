@@ -29,6 +29,7 @@ import { Mwn } from 'mwn'
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.4.8 重启bwiki更新
   - 0.4.6 移除没必要的功能
   - 0.4.5 检测教程页面
 `;
@@ -51,10 +52,12 @@ export interface WikiPages {
 export interface Config {
   bot_username: string;
   bot_password: string;
+  bwiki_session: string;
 }
 export const Config: Schema<Config> = Schema.object({
   bot_username: Schema.string().description("机器人用户名"),
   bot_password: Schema.string().description("机器人密码"),
+  bwiki_session: Schema.string().description("bwiki的session,无法连接到gg时使用"),
 });
 
 export function apply(ctx: Context, config: Config) {
@@ -129,6 +132,34 @@ export function apply(ctx: Context, config: Config) {
     const count = await ctx.database.remove('wikipages', {});
     session.send(`已删除 ${count.removed} 条本地缓存`);
     logger.info(`已删除 ${count.removed} 条本地缓存`);
+  });
+  ctx.command("update.bwiki", "使用bwiki的session更新本地页面缓存", { authority: 4 })
+    .action(async ({ session }) => {
+      const headers = {
+        "Content-Type": "application/json",
+        "user-agent": "Charles'queryBot",
+        Cookie: `SESSDATA=${config.bwiki_session}`,
+      };
+      const url = `https://wiki.biligame.com/oni/api.php?action=query&list=allpages&apnamespace=0&aplimit=5000&format=json`;
+      ctx.http.get(url, { headers: headers })
+        .then((res) => {
+          res["query"]["allpages"].forEach((page) => {
+            ctx.database.upsert('wikipages', () => [
+              { id: page.pageid, title: page.title },
+            ]);
+          });
+          session.send(`检索到 ${res["query"]["allpages"].length} 个页面，已尝试更新至数据库`);
+          logger.info(`检索到 ${res["query"]["allpages"].length} 个页面，已尝试更新至数据库`);
+        })
+        .catch((err) => {
+          session.send('更新失败,请联系管理员检查日志');
+          logger.error('更新失败', err);
+        });
+    });
+  ctx.command("update.status", "查询本地页面缓存数量", { authority: 1 }).action(async ({ session }) => {
+    const count = await ctx.database.get('wikipages', {});
+    session.send(`数据库中缓存了 ${count.length} 条页面`);
+    logger.info(`数据库中缓存了 ${count.length} 条页面`);
   });
 }
 
