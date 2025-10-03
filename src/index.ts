@@ -29,6 +29,7 @@ import { Mwn } from 'mwn'
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.4.9 添加重定向功能
   - 0.4.8 重启bwiki更新
   - 0.4.6 移除没必要的功能
   - 0.4.5 检测教程页面
@@ -46,6 +47,7 @@ declare module "koishi" {
 export interface WikiPages {
   id: number;
   title: string;
+  redirect: string;
 }
 
 // 配置项
@@ -67,28 +69,8 @@ export function apply(ctx: Context, config: Config) {
   ctx.model.extend("wikipages", {
     id: "integer",
     title: "string",
+    redirect: "string",
   });
-
-  // 注册指令
-  ctx
-    .command("x <itemName>", "查询缺氧中文wiki")
-    .alias("/查wiki")
-    .action(async ({ session }, itemName = "电解器") => {
-      if (/教程/.test(itemName)) {
-        return `请点击链接前往站点查看:\n原站点:  http://oni.wiki/${encodeURI(
-          `教程`
-        )}\n镜像站:  http://klei.vip/oni/usiz6d/${encodeURI(`教程`)}`;
-      }
-      const res = await ctx.database.get("wikipages", {
-        title: [`${itemName}`],
-      });
-      if (res.length == 0) {
-        return `在Wiki里没找到,如有需要,请按照游戏内名称重新发起查询....`;
-      }
-      return `请点击链接前往站点查看:\n原站点:  http://oni.wiki/${encodeURI(
-        itemName
-      )}\n镜像站:  http://klei.vip/oni/usiz6d/${encodeURI(itemName)}`;
-    });
 
   // 启动时登录
   ctx.on("ready", async () => {
@@ -107,6 +89,71 @@ export function apply(ctx: Context, config: Config) {
       logger.error('Wiki机器人登录失败', err);
     });
   });
+
+  // 注册指令
+  ctx
+    .command("x <itemName>", "查询缺氧中文wiki")
+    .alias("/查wiki")
+    .action(async ({ session }, itemName = "电解器") => {
+      if (/教程/.test(itemName)) {
+        return `请点击链接前往站点查看:\n原站点:  http://oni.wiki/${encodeURI(
+          `教程`
+        )}\n镜像站:  http://klei.vip/oni/usiz6d/${encodeURI(`教程`)}`;
+      }
+      const res = await ctx.database.get("wikipages", {
+        $or: [{
+          title: itemName
+        },
+        {
+          redirect: itemName
+        }]
+      });
+
+      if (res.length == 0) {
+        return `在Wiki里没找到,如有需要,请按照游戏内名称重新发起查询....`;
+      }
+      const pageName = res[0].title;
+      return `请点击链接前往站点查看:\n原站点:  http://oni.wiki/${encodeURI(
+        pageName
+      )}\n镜像站:  http://klei.vip/oni/usiz6d/${encodeURI(pageName)}`;
+    });
+
+  ctx.command("x.redirect <itemName:string> <redirect:string>", "物品重定向", { authority: 2 }).alias("重定向")
+    .action(async ({ session }, itemName, redirect) => {
+      if (!itemName || !redirect) {
+        return `请提供物品名称或重定向链接，格式如下：\n重定向 页面名称 重定向到页面物品名称`;
+      }
+      // 检查数据库中是否存在
+      const database_res = await ctx.database.get("wikipages", {
+        $or: [{
+          title: itemName
+        },
+        {
+          redirect: itemName
+        }]
+      });
+      if (database_res.length == 0) {
+        return `在数据库里没找到 ${itemName},如有需要,请按照游戏内名称重新发起重定向或联系管理员`;
+      }
+      if (database_res[0].redirect) {
+        return `${itemName} 已存在重定向,如需修改请联系管理员`;
+      }
+      // 写入数据库
+      await ctx.database.upsert("wikipages", [{
+        id: database_res[0].id,
+        title: itemName,
+        redirect: redirect
+      }]).then(() => {
+        wikibot.save(`${itemName}`, `#REDIRECT [[${redirect}]]`)
+          .then(() => {
+            session.send(`已成功将 ${itemName} 重定向至 ${redirect}并写入GG原站点`);
+          }).catch((err) => {
+            logger.error('写入重定向至原站点失败：', err);
+            session.send('写入重定向至原站点失败,请联系管理员检查日志或自行前往原站点编辑');
+          });
+        return `已成功将 ${itemName} 重定向至 ${redirect} 并写入数据库`;
+      });
+    });
 
   ctx.command("update", "更新本地页面缓存", { authority: 2 }).action(async ({ session }) => {
     wikibot.request({
@@ -133,7 +180,7 @@ export function apply(ctx: Context, config: Config) {
     session.send(`已删除 ${count.removed} 条本地缓存`);
     logger.info(`已删除 ${count.removed} 条本地缓存`);
   });
-  ctx.command("update.bwiki", "使用bwiki的session更新本地页面缓存", { authority: 4 })
+  ctx.command("update.bwiki", "使用bwiki的session更新本地页面缓存", { authority: 2 })
     .action(async ({ session }) => {
       const headers = {
         "Content-Type": "application/json",
