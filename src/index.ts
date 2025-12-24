@@ -29,6 +29,7 @@ import { Mwn } from 'mwn'
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.5.1 原站点重定向至简体中文站点
   - 0.5.0 移除重定向功能 GG站点已修复，保险起见保留bwiki更新功能
   - 0.4.9 添加重定向功能
   - 0.4.8 重启bwiki更新
