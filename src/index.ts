@@ -100,7 +100,7 @@ export function apply(ctx: Context, config: Config) {
       if (/教程/.test(itemName)) {
         return `请点击链接前往站点查看:\n原站点:  http://oni.wiki/${encodeURI(
           `教程`
-        )}\n镜像站:  http://klei.vip/oni/usiz6d/${encodeURI(`教程`)}`;
+        )}?variant=zh\n镜像站:  http://klei.vip/oni/usiz6d/${encodeURI(`教程`)}`;
       }
       const res = await ctx.database.get("wikipages", {
         $or: [{
@@ -117,7 +117,7 @@ export function apply(ctx: Context, config: Config) {
       const pageName = res[0].title;
       return `请点击链接前往站点查看:\n原站点:  http://oni.wiki/${encodeURI(
         pageName
-      )}\n镜像站:  http://klei.vip/oni/usiz6d/${encodeURI(pageName)}`;
+      )}?variant=zh\n镜像站:  http://klei.vip/oni/usiz6d/${encodeURI(pageName)}`;
     });
   ctx.command("update", "更新本地页面缓存", { authority: 2 }).action(async ({ session }) => {
     wikibot.request({
