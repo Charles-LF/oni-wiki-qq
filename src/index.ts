@@ -51,7 +51,6 @@ declare module "koishi" {
 export interface WikiPages {
   id: number;
   title: string;
-  redirect: string;
 }
 
 // 配置项
