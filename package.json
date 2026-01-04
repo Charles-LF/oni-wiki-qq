@@ -1,7 +1,11 @@
 {
   "name": "koishi-plugin-oni-wiki-qq",
   "description": "缺氧wiki查询，自用",
+<<<<<<< HEAD
   "version": "0.7.1",
+=======
+  "version": "0.7.0",
+>>>>>>> 11b3df4c7dc2c4538e0b0108a96d33911bc14afb
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
