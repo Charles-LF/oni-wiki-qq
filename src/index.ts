@@ -31,6 +31,7 @@ import { pinyin } from "pinyin-pro";
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.7.3 优化短链接发送消息格式
   - 0.7.2 尝试修复短链接跳转问题
   - 0.7.0 实现短链路由转发，链接改为klei.vip/ggwiki或者bwiki+页面ID
   - 0.6.1 模糊匹配返回最多5条结果+序号等待交互，超时无输入则静默结束
@@ -62,6 +63,8 @@ export interface Config {
   bot_password: string;
   bwiki_session: string;
   domain: string;
+  main_site: string;
+  mirror_site: string;
 }
 export const Config: Schema<Config> = Schema.object({
   bot_username: Schema.string().description("机器人用户名"),
@@ -72,6 +75,12 @@ export const Config: Schema<Config> = Schema.object({
   domain: Schema.string()
     .description("你的短链域名（必填，如：klei.vip）")
     .default("klei.vip"),
+  main_site: Schema.string()
+    .description("主站域名（必填，如：oxygennotincluded.wiki.gg）")
+    .default("oxygennotincluded.wiki.gg/zh"),
+  mirror_site: Schema.string()
+    .description("镜像站域名（必填，如：wiki.biligame.com）")
+    .default("wiki.biligame.com/oni"),
 });
 
 export function apply(ctx: Context, config: Config) {
@@ -91,10 +100,10 @@ export function apply(ctx: Context, config: Config) {
     const [page] = await ctx.database.get("wikipages", { id: pageId });
     if (!page)
       return (router.body = `❌ 未找到ID为【${pageId}】的页面，请联系管理员更新缓存！`);
-    const targetUrl = `http://oni.wiki/${encodeURIComponent(
+    const targetUrl = `https://${config.main_site}/${encodeURIComponent(
       page.title
     )}?variant=zh`;
-    router.redirect(targetUrl); //重定向至oni.wiki
+    router.redirect(targetUrl); //重定向至oxygennotincluded.wiki.gg
   });
 
   // 镜像站路由：klei.vip/bwiki/[id] → 跳转至 wiki.biligame.com/oni/[title]
@@ -106,12 +115,11 @@ export function apply(ctx: Context, config: Config) {
     if (!page)
       return (router.body = `❌ 未找到ID为【${pageId}】的页面，请联系管理员更新缓存！`);
 
-    const targetUrl = `https://wiki.biligame.com/oni/${encodeURIComponent(
+    const targetUrl = `https://${config.mirror_site}/${encodeURIComponent(
       page.title
     )}`;
     router.redirect(targetUrl); //重定向至wiki.biligame.com
   });
-  // ==============================================================
 
   // Wiki机器人登录
   ctx.on("ready", async () => {
@@ -139,9 +147,7 @@ export function apply(ctx: Context, config: Config) {
       });
       if (preciseRes.length > 0) {
         const { id } = preciseRes[0];
-        return `✅ 精准匹配成功\n
-原站点:  http://${config.domain}/ggwiki/${id}\n
-镜像站:  http://${config.domain}/bwiki/${id}`;
+        return `✅ 精准匹配成功\n原站点: http://${config.domain}/ggwiki/${id}\n镜像站: http://${config.domain}/bwiki/${id}`;
       }
 
       // 拼音模糊匹配
@@ -202,11 +208,11 @@ export function apply(ctx: Context, config: Config) {
       ).slice(0, 5);
       const resultCount = uniqueResult.length;
 
-      let replyMsg = `🔍 未找到精准匹配，为你找到【${resultCount}】个相似结果，请输入序号选择（10秒内有效）：\n`;
+      let replyMsg = `🔍 未找到精准匹配，为你找到【 ${resultCount} 】个相似结果，请输入序号选择（10秒内有效）：\n`;
       uniqueResult.forEach((item, index) => {
         replyMsg += `${index + 1}. ${item.title}\n`;
       });
-      replyMsg += `\n❗️ 提示：超时将静默结束，无任何回应，没有待选结果请艾特机器人任意内容结束本轮查询`;
+      replyMsg += `\n❗️ 提示：超时将静默结束，无任何回应`;
       await session.send(replyMsg);
 
       // 等待用户输入
@@ -219,9 +225,7 @@ export function apply(ctx: Context, config: Config) {
       }
 
       const { id } = uniqueResult[selectNum - 1];
-      return `✅ 选择成功\n
-原站点:  http://${config.domain}/ggwiki/${id}\n
-镜像站:  http://${config.domain}/bwiki/${id}`;
+      return `✅ 选择成功\n原站点: http://${config.domain}/ggwiki/${id}\n镜像站: http://${config.domain}/bwiki/${id}`;
     });
 
   // 缓存更新相关指令
