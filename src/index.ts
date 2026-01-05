@@ -27,10 +27,12 @@ import { Context, Schema, Logger } from "koishi";
 import {} from "@koishijs/plugin-server";
 import { Mwn } from "mwn";
 import { pinyin } from "pinyin-pro";
+import title from "mwn/build/title";
 
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.7.4 添加重定向指令
   - 0.7.3 优化短链接发送消息格式
   - 0.7.2 尝试修复短链接跳转问题
   - 0.7.0 实现短链路由转发，链接改为klei.vip/ggwiki或者bwiki+页面ID
@@ -297,5 +299,25 @@ export function apply(ctx: Context, config: Config) {
       const count = await ctx.database.get("wikipages", {});
       session.send(`数据库中缓存了 ${count.length} 条页面`);
       logger.info(`数据库中缓存了 ${count.length} 条页面`);
+    });
+  ctx
+    .command("redirect <pageName> <targetPageName>", "添加原站点重定向", {
+      authority: 2,
+    }).alias("重定向")
+    .action(async ({ session }, pageName, targetPageName) => {
+      await wikibot
+        .create(
+          pageName,
+          `#REDIRECT [[${targetPageName}]]`,
+          "来自qq机器人的添加重定向页面请求"
+        )
+        .then(() => {
+          logger.info(`已为 ${pageName} 添加重定向至 ${targetPageName}`);
+          session.send(`已尝试添加重定向 ${pageName} -> ${targetPageName}`);
+          session.execute(`update`);
+        })
+        .catch((err) => {
+          logger.error(`添加重定向 ${pageName} -> ${targetPageName} 失败`, err);
+        });
     });
 }
