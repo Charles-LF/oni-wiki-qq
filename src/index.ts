@@ -24,13 +24,16 @@
 //                  佛曰: 能跑就行
 
 import { Context, Schema, Logger } from "koishi";
+import {} from "@koishijs/plugin-server";
 import { Mwn } from "mwn";
 import { pinyin } from "pinyin-pro";
 
 export const name = "oni-wiki-qq";
 
 export const usage = `
-  - 0.6.1 ✅ 模糊匹配返回最多5条结果+序号等待交互，超时无输入则静默结束
+  - 0.7.2 尝试修复短链接跳转问题
+  - 0.7.0 实现短链路由转发，链接改为klei.vip/ggwiki或者bwiki+页面ID
+  - 0.6.1 模糊匹配返回最多5条结果+序号等待交互，超时无输入则静默结束
   - 0.6.0 集成pinyin-pro拼音模糊匹配，精准匹配优先
   - 0.5.0 移除重定向功能 GG站点已修复，保留bwiki更新功能
   - 0.4.9 添加重定向功能
@@ -39,7 +42,7 @@ export const usage = `
   - 0.4.5 检测教程页面
 `;
 
-export const inject = ["database"];
+export const inject = ["database", "server"];
 
 // 数据库声明
 declare module "koishi" {
@@ -58,6 +61,7 @@ export interface Config {
   bot_username: string;
   bot_password: string;
   bwiki_session: string;
+  domain: string;
 }
 export const Config: Schema<Config> = Schema.object({
   bot_username: Schema.string().description("机器人用户名"),
@@ -65,6 +69,9 @@ export const Config: Schema<Config> = Schema.object({
   bwiki_session: Schema.string().description(
     "bwiki的session，无法连接到gg时使用"
   ),
+  domain: Schema.string()
+    .description("你的短链域名（必填，如：klei.vip）")
+    .default("klei.vip"),
 });
 
 export function apply(ctx: Context, config: Config) {
@@ -75,6 +82,36 @@ export function apply(ctx: Context, config: Config) {
     id: "integer",
     title: "string",
   });
+
+  //原站路由：klei.vip/ggwiki/[id] → 跳转至 oni.wiki/[title]?variant=zh
+  ctx.server.get("/ggwiki/:id", async (router) => {
+    const pageId = Number(router.params.id);
+    if (isNaN(pageId)) return (router.body = "❌ 无效的页面ID，必须为数字！");
+
+    const [page] = await ctx.database.get("wikipages", { id: pageId });
+    if (!page)
+      return (router.body = `❌ 未找到ID为【${pageId}】的页面，请联系管理员更新缓存！`);
+    const targetUrl = `http://oni.wiki/${encodeURIComponent(
+      page.title
+    )}?variant=zh`;
+    router.redirect(targetUrl); //重定向至oni.wiki
+  });
+
+  // 镜像站路由：klei.vip/bwiki/[id] → 跳转至 wiki.biligame.com/oni/[title]
+  ctx.server.get("/bwiki/:id", async (router) => {
+    const pageId = Number(router.params.id);
+    if (isNaN(pageId)) return (router.body = "❌ 无效的页面ID，必须为数字！");
+
+    const [page] = await ctx.database.get("wikipages", { id: pageId });
+    if (!page)
+      return (router.body = `❌ 未找到ID为【${pageId}】的页面，请联系管理员更新缓存！`);
+
+    const targetUrl = `https://wiki.biligame.com/oni/${encodeURIComponent(
+      page.title
+    )}`;
+    router.redirect(targetUrl); //重定向至wiki.biligame.com
+  });
+  // ==============================================================
 
   // Wiki机器人登录
   ctx.on("ready", async () => {
@@ -95,28 +132,19 @@ export function apply(ctx: Context, config: Config) {
     .command("x <itemName>", "查询缺氧中文wiki，精准匹配+拼音模糊匹配+序号选择")
     .alias("/查wiki")
     .action(async ({ session }, itemName = "电解器") => {
-      // 教程页面特殊处理
-      if (/教程/.test(itemName)) {
-        return `请点击链接前往站点查看:\n原站点:  http://oni.wiki/${encodeURI(
-          `教程`
-        )}?variant=zh\n镜像站:  http://klei.vip/oni/usiz6d/${encodeURI(
-          `教程`
-        )}`;
-      }
-
       const queryKey = itemName.trim();
-      // 精准匹配：完全一致直接返回网址
+      // 精准匹配：返回ID格式短链
       const preciseRes = await ctx.database.get("wikipages", {
-        $or: [{ title: queryKey }],
+        title: queryKey,
       });
       if (preciseRes.length > 0) {
-        const pageName = preciseRes[0].title;
-        return `✅ 精准匹配成功
-原站点:  http://oni.wiki/${encodeURI(pageName)}?variant=zh
-镜像站:  http://klei.vip/oni/usiz6d/${encodeURI(pageName)}`;
+        const { id } = preciseRes[0];
+        return `✅ 精准匹配成功\n
+原站点:  http://${config.domain}/ggwiki/${id}\n
+镜像站:  http://${config.domain}/bwiki/${id}`;
       }
 
-      // 无精准匹配 → 拼音模糊匹配（返回最多5条结果）
+      // 拼音模糊匹配
       const allPages = await ctx.database.get("wikipages", {});
       if (allPages.length === 0) {
         return `❌ 本地缓存为空，请联系管理员执行【update】指令更新缓存！`;
@@ -131,7 +159,8 @@ export function apply(ctx: Context, config: Config) {
         type: "string",
         separator: "",
       }).toLowerCase();
-      const matchResult: Array<{ title: string; score: number }> = [];
+      const matchResult: Array<{ id: number; title: string; score: number }> =
+        [];
 
       allPages.forEach((page) => {
         const targetTitle = page.title || "";
@@ -158,47 +187,44 @@ export function apply(ctx: Context, config: Config) {
           userFirstLetter.includes(titleFirstLetter)
         )
           score += 3;
-        if (score > 0) matchResult.push({ title: targetTitle, score });
+        if (score > 0)
+          matchResult.push({ id: page.id, title: targetTitle, score });
       });
 
-      // 无模糊匹配结果 → 直接返回提示，不等待
       if (matchResult.length === 0) {
         return `❌ 未找到【${queryKey}】相关内容，请按游戏内标准名称重新查询！`;
       }
 
-      // 排序+去重 → 最多返回5条候选结果
+      // 排序去重，返回候选列表
       const sortedResult = matchResult.sort((a, b) => b.score - a.score);
       const uniqueResult = Array.from(
         new Map(sortedResult.map((item) => [item.title, item])).values()
       ).slice(0, 5);
       const resultCount = uniqueResult.length;
 
-      // 发送候选结果，等待用户输入序号（10秒超时，无输入则静默结束）
-      let replyMsg = `🔍 未找到精准匹配，为你找到【 ${resultCount} 】个相似结果，请输入序号选择（10秒内有效）：\n`;
+      let replyMsg = `🔍 未找到精准匹配，为你找到【${resultCount}】个相似结果，请输入序号选择（10秒内有效）：\n`;
       uniqueResult.forEach((item, index) => {
         replyMsg += `${index + 1}. ${item.title}\n`;
       });
-      replyMsg += `\n❗️ 提示：超时将静默结束，无任何回应`;
-      // 发送候选列表给用户
+      replyMsg += `\n❗️ 提示：超时将静默结束，无任何回应，没有待选结果请艾特机器人任意内容结束本轮查询`;
       await session.send(replyMsg);
 
-      // 等待用户输入序号，超时返回null → 静默结束，无任何回应
-      const userInput = await session.prompt(10000); // 超时时间：10000ms=10秒
+      // 等待用户输入
+      const userInput = await session.prompt(10000);
       if (!userInput) return;
 
-      // 处理用户输入的序号，返回对应网址
       const selectNum = parseInt(userInput.trim());
-      // 校验序号有效性：非数字/超出范围 → 提示错误，不返回其他内容
       if (isNaN(selectNum) || selectNum < 1 || selectNum > resultCount) {
         return `❌ 输入无效！请输入 1-${resultCount} 之间的数字序号`;
       }
-      // 序号有效 → 拼接对应页面的网址返回
-      const targetPage = uniqueResult[selectNum - 1].title;
-      return `✅ 选择成功
-原站点:  http://oni.wiki/${encodeURI(targetPage)}?variant=zh
-镜像站:  http://klei.vip/oni/usiz6d/${encodeURI(targetPage)}`;
+
+      const { id } = uniqueResult[selectNum - 1];
+      return `✅ 选择成功\n
+原站点:  http://${config.domain}/ggwiki/${id}\n
+镜像站:  http://${config.domain}/bwiki/${id}`;
     });
 
+  // 缓存更新相关指令
   ctx
     .command("update", "更新本地页面缓存", { authority: 2 })
     .action(async ({ session }) => {
