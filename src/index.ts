@@ -27,11 +27,11 @@ import { Context, Schema, Logger } from "koishi";
 import {} from "@koishijs/plugin-server";
 import { Mwn } from "mwn";
 import { pinyin } from "pinyin-pro";
-import title from "mwn/build/title";
 
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.7.5 开启SSL
   - 0.7.4 添加重定向指令
   - 0.7.3 优化短链接发送消息格式
   - 0.7.2 尝试修复短链接跳转问题
@@ -149,7 +149,7 @@ export function apply(ctx: Context, config: Config) {
       });
       if (preciseRes.length > 0) {
         const { id } = preciseRes[0];
-        return `✅ 精准匹配成功\n原站点: http://${config.domain}/ggwiki/${id}\n镜像站: http://${config.domain}/bwiki/${id}`;
+        return `✅ 精准匹配成功\n原站点: https://${config.domain}/ggwiki/${id}\n镜像站: https://${config.domain}/bwiki/${id}`;
       }
 
       // 拼音模糊匹配
@@ -227,7 +227,7 @@ export function apply(ctx: Context, config: Config) {
       }
 
       const { id } = uniqueResult[selectNum - 1];
-      return `✅ 选择成功\n原站点: http://${config.domain}/ggwiki/${id}\n镜像站: http://${config.domain}/bwiki/${id}`;
+      return `✅ 选择成功\n原站点: https://${config.domain}/ggwiki/${id}\n镜像站: https://${config.domain}/bwiki/${id}`;
     });
 
   // 缓存更新相关指令
