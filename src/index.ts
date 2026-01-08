@@ -26,11 +26,12 @@
 import { Context, Schema, Logger } from "koishi";
 import {} from "@koishijs/plugin-server";
 import { Mwn } from "mwn";
-import { pinyin } from "pinyin-pro";
+import { generatePinyinInfo } from "./lib";
 
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.8.0 优化拼音/首字母匹配逻辑，新增拼音/首字母数据库缓存，提升匹配速度和精准度
   - 0.7.5 开启SSL
   - 0.7.4 添加重定向指令
   - 0.7.3 优化短链接发送消息格式
@@ -47,7 +48,7 @@ export const usage = `
 
 export const inject = ["database", "server"];
 
-// 数据库声明
+// 扩展数据库声明，新增拼音和首字母字段
 declare module "koishi" {
   interface Tables {
     wikipages: WikiPages;
@@ -57,6 +58,8 @@ declare module "koishi" {
 export interface WikiPages {
   id: number;
   title: string;
+  pinyin_full: string; // 全拼（无音调，无分隔符）
+  pinyin_first: string; // 首字母缩写（小写）
 }
 
 // 配置项
@@ -89,13 +92,16 @@ export function apply(ctx: Context, config: Config) {
   const logger = ctx.logger(name);
   let wikibot: Mwn;
 
+  // 扩展数据库表
   ctx.model.extend("wikipages", {
     id: "integer",
     title: "string",
+    pinyin_full: "string", // 全拼
+    pinyin_first: "string", // 首字母
   });
 
-  //原站路由：klei.vip/ggwiki/[id] → 跳转至 oni.wiki/[title]?variant=zh
-  ctx.server.get("/ggwiki/:id", async (router) => {
+  //原站路由：klei.vip/gg/[id] → 跳转至 oni.wiki/[title]?variant=zh
+  ctx.server.get("/gg/:id", async (router) => {
     const pageId = Number(router.params.id);
     if (isNaN(pageId)) return (router.body = "❌ 无效的页面ID，必须为数字！");
 
@@ -108,8 +114,8 @@ export function apply(ctx: Context, config: Config) {
     router.redirect(targetUrl); //重定向至oxygennotincluded.wiki.gg
   });
 
-  // 镜像站路由：klei.vip/bwiki/[id] → 跳转至 wiki.biligame.com/oni/[title]
-  ctx.server.get("/bwiki/:id", async (router) => {
+  // 镜像站路由：klei.vip/bw/[id] → 跳转至 wiki.biligame.com/oni/[title]
+  ctx.server.get("/bw/:id", async (router) => {
     const pageId = Number(router.params.id);
     if (isNaN(pageId)) return (router.body = "❌ 无效的页面ID，必须为数字！");
 
@@ -139,71 +145,69 @@ export function apply(ctx: Context, config: Config) {
   });
 
   ctx
-    .command("x <itemName>", "查询缺氧中文wiki，精准匹配+拼音模糊匹配+序号选择")
+    .command("x <itemName>", "查询缺氧中文wiki，精准匹配+拼音模糊匹配")
     .alias("/查wiki")
     .action(async ({ session }, itemName = "电解器") => {
-      const queryKey = itemName.trim();
-      // 精准匹配：返回ID格式短链
-      const preciseRes = await ctx.database.get("wikipages", {
+      const queryKey = itemName.trim().toLowerCase();
+      if (!queryKey) return "❌ 查询关键词不能为空！";
+
+      // 匹配标题
+      const preciseTitleRes = await ctx.database.get("wikipages", {
         title: queryKey,
       });
-      if (preciseRes.length > 0) {
-        const { id } = preciseRes[0];
-        return `✅ 精准匹配成功\n原站点: https://${config.domain}/ggwiki/${id}\n镜像站: https://${config.domain}/bwiki/${id}`;
+      if (preciseTitleRes.length > 0) {
+        const { id } = preciseTitleRes[0];
+        return `✅ 精准匹配成功\n原站点: https://${config.domain}/gg/${id}\n\n镜像站: https://${config.domain}/bw/${id}`;
       }
 
-      // 拼音模糊匹配
+      // 匹配全拼
+      const preciseFullPinyinRes = await ctx.database.get("wikipages", {
+        pinyin_full: queryKey,
+      });
+      if (preciseFullPinyinRes.length > 0) {
+        const { id, title } = preciseFullPinyinRes[0];
+        return `✅ 拼音精准匹配成功（${queryKey} → ${title}）\n原站点: https://${config.domain}/gg/${id}\n\n镜像站: https://${config.domain}/bw/${id}`;
+      }
+
+      // 匹配首字母
+      const preciseFirstPinyinRes = await ctx.database.get("wikipages", {
+        pinyin_first: queryKey,
+      });
+      if (preciseFirstPinyinRes.length > 0) {
+        const { id, title } = preciseFirstPinyinRes[0];
+        return `✅ 首字母精准匹配成功（${queryKey} → ${title}）\n原站点: https://${config.domain}/gg/${id}\n\n镜像站: https://${config.domain}/bw/${id}`;
+      }
+
+      // 模糊匹配（标题/全拼/首字母包含关键词）
       const allPages = await ctx.database.get("wikipages", {});
       if (allPages.length === 0) {
         return `❌ 本地缓存为空，请联系管理员执行【update】指令更新缓存！`;
       }
 
-      const userPinyin = pinyin(queryKey, {
-        toneType: "none",
-        type: "string",
-        separator: "",
-      });
-      const userFirstLetter = pinyin(queryKey, {
-        type: "string",
-        separator: "",
-      }).toLowerCase();
       const matchResult: Array<{ id: number; title: string; score: number }> =
         [];
 
       allPages.forEach((page) => {
-        const targetTitle = page.title || "";
-        if (!targetTitle) return;
-        const titlePinyin = pinyin(targetTitle, {
-          toneType: "none",
-          type: "string",
-          separator: "",
-        });
-        const titleFirstLetter = pinyin(targetTitle, {
-          type: "string",
-          separator: "",
-        }).toLowerCase();
-
+        const { title, pinyin_full, pinyin_first } = page;
         let score = 0;
-        if (
-          titlePinyin.includes(userPinyin) ||
-          userPinyin.includes(titlePinyin)
-        )
-          score += 5;
-        if (targetTitle.includes(queryKey)) score += 4;
-        if (
-          titleFirstLetter.includes(userFirstLetter) ||
-          userFirstLetter.includes(titleFirstLetter)
-        )
-          score += 3;
-        if (score > 0)
-          matchResult.push({ id: page.id, title: targetTitle, score });
+
+        // 标题包含关键词 +4分
+        if (title.includes(queryKey)) score += 4;
+        // 全拼包含关键词 +3分
+        if (pinyin_full.includes(queryKey)) score += 3;
+        // 首字母包含关键词 +2分
+        if (pinyin_first.includes(queryKey)) score += 2;
+
+        if (score > 0) {
+          matchResult.push({ id: page.id, title, score });
+        }
       });
 
       if (matchResult.length === 0) {
         return `❌ 未找到【${queryKey}】相关内容，请按游戏内标准名称重新查询！`;
       }
 
-      // 排序去重，返回候选列表
+      // 排序去重，返回前5条
       const sortedResult = matchResult.sort((a, b) => b.score - a.score);
       const uniqueResult = Array.from(
         new Map(sortedResult.map((item) => [item.title, item])).values()
@@ -227,97 +231,138 @@ export function apply(ctx: Context, config: Config) {
       }
 
       const { id } = uniqueResult[selectNum - 1];
-      return `✅ 选择成功\n原站点: https://${config.domain}/ggwiki/${id}\n镜像站: https://${config.domain}/bwiki/${id}`;
+      return `✅ 选择成功\n原站点: https://${config.domain}/gg/${id}\n\n镜像站: https://${config.domain}/bw/${id}`;
     });
 
-  // 缓存更新相关指令
+  // 缓存更新相关指令（主站）
   ctx
-    .command("update", "更新本地页面缓存", { authority: 2 })
+    .command("update", "更新本地页面缓存（主站）", { authority: 2 })
     .action(async ({ session }) => {
-      wikibot
-        .request({
+      await session.execute("update.status");
+      try {
+        const res = await wikibot.request({
           action: "query",
           list: "allpages",
           format: "json",
           aplimit: "max",
-        })
-        .then((res) => {
-          logger.info("查询成功");
-          const pages = res.query.allpages;
-          pages.forEach((page) => {
-            ctx.database.upsert("wikipages", () => [
-              { id: page.pageid, title: page.title },
-            ]);
-          });
-          session.send(`检索到 ${pages.length} 个页面，已尝试更新至数据库`);
-          logger.info(`检索到 ${pages.length} 个页面，已尝试更新至数据库`);
-        })
-        .catch((err) => logger.error("查询失败", err));
+        });
+        logger.info("主站页面查询成功");
+        const pages = res.query.allpages || [];
+        
+        // 批量处理页面数据，生成拼音信息
+        const pageData = pages.map((page) => {
+          const { pinyin_full, pinyin_first } = generatePinyinInfo(page.title);
+          return {
+            id: page.pageid,
+            title: page.title,
+            pinyin_full,
+            pinyin_first,
+          };
+        });
+
+        // 批量更新数据库
+        if (pageData.length > 0) {
+          await ctx.database.upsert("wikipages", pageData);
+        }
+
+        session.send(`✅ 检索到 ${pages.length} 个页面，已更新至数据库`);
+        logger.info(`检索到 ${pages.length} 个页面，已更新至数据库`);
+      } catch (err) {
+        logger.error("主站缓存更新失败", err);
+        session.send("❌ 主站缓存更新失败，请联系管理员查看日志");
+      }
     });
 
+  // 删除本地缓存
   ctx
     .command("update.delete", "删除本地页面缓存", { authority: 4 })
     .action(async ({ session }) => {
-      const count = await ctx.database.remove("wikipages", {});
-      session.send(`已删除 ${count.removed} 条本地缓存`);
-      logger.info(`已删除 ${count.removed} 条本地缓存`);
+      try {
+        const count = await ctx.database.remove("wikipages", {});
+        session.send(`✅ 已删除 ${count.removed} 条本地缓存`);
+        logger.info(`已删除 ${count.removed} 条本地缓存`);
+      } catch (err) {
+        logger.error("删除缓存失败", err);
+        session.send("❌ 删除缓存失败，请联系管理员查看日志");
+      }
     });
 
+  // 使用bwiki更新缓存
   ctx
-    .command("update.bwiki", "使用bwiki的session更新缓存", { authority: 2 })
+    .command("update.bw", "使用bwiki的session更新缓存", { authority: 2 })
     .action(async ({ session }) => {
-      const headers = {
-        "Content-Type": "application/json",
-        "user-agent": "Charles'queryBot",
-        Cookie: `SESSDATA=${config.bwiki_session}`,
-      };
-      const url = `https://wiki.biligame.com/oni/api.php?action=query&list=allpages&apnamespace=0&aplimit=5000&format=json`;
-      ctx.http
-        .get(url, { headers })
-        .then((res) => {
-          res["query"]["allpages"].forEach((page) => {
-            ctx.database.upsert("wikipages", () => [
-              { id: page.pageid, title: page.title },
-            ]);
-          });
-          session.send(
-            `检索到 ${res["query"]["allpages"].length} 个页面，已尝试更新至数据库`
-          );
-          logger.info(
-            `检索到 ${res["query"]["allpages"].length} 个页面，已尝试更新至数据库`
-          );
-        })
-        .catch((err) => {
-          session.send("更新失败,请联系管理员检查日志");
-          logger.error("更新失败", err);
+      try {
+        const headers = {
+          "Content-Type": "application/json",
+          "user-agent": "Charles'queryBot",
+          Cookie: `SESSDATA=${config.bwiki_session}`,
+        };
+        const url = `https://wiki.biligame.com/oni/api.php?action=query&list=allpages&apnamespace=0&aplimit=5000&format=json`;
+        
+        const res = await ctx.http.get(url, { headers });
+        const pages = res.query?.allpages || [];
+        
+        // 批量处理页面数据，生成拼音信息
+        const pageData = pages.map((page) => {
+          const { pinyin_full, pinyin_first } = generatePinyinInfo(page.title);
+          return {
+            id: page.pageid,
+            title: page.title,
+            pinyin_full,
+            pinyin_first,
+          };
         });
+
+        // 批量更新数据库
+        if (pageData.length > 0) {
+          await ctx.database.upsert("wikipages", pageData);
+        }
+
+        session.send(`✅ 从Bwiki检索到 ${pages.length} 个页面，已更新至数据库`);
+        logger.info(`从Bwiki检索到 ${pages.length} 个页面，已更新至数据库`);
+      } catch (err) {
+        logger.error("Bwiki缓存更新失败", err);
+        session.send("❌ Bwiki缓存更新失败，请联系管理员查看日志");
+      }
     });
 
+  // 查询缓存状态
   ctx
     .command("update.status", "查询本地缓存数量", { authority: 1 })
     .action(async ({ session }) => {
-      const count = await ctx.database.get("wikipages", {});
-      session.send(`数据库中缓存了 ${count.length} 条页面`);
-      logger.info(`数据库中缓存了 ${count.length} 条页面`);
+      try {
+        const pages = await ctx.database.get("wikipages", {});
+        session.send(`📊 数据库中缓存了 ${pages.length} 条页面`);
+        logger.info(`数据库中缓存了 ${pages.length} 条页面`);
+      } catch (err) {
+        logger.error("查询缓存状态失败", err);
+        session.send("❌ 查询缓存状态失败，请联系管理员查看日志");
+      }
     });
+
+  // 添加重定向
   ctx
     .command("redirect <pageName> <targetPageName>", "添加原站点重定向", {
       authority: 2,
-    }).alias("重定向")
+    })
+    .alias("重定向")
     .action(async ({ session }, pageName, targetPageName) => {
-      await wikibot
-        .create(
+      if (!pageName || !targetPageName) {
+        return "❌ 参数错误！用法：redirect <原页面名> <目标页面名>";
+      }
+      try {
+        await wikibot.create(
           pageName,
           `#REDIRECT [[${targetPageName}]]`,
           "来自qq机器人的添加重定向页面请求"
-        )
-        .then(() => {
-          logger.info(`已为 ${pageName} 添加重定向至 ${targetPageName}`);
-          session.send(`已尝试添加重定向 ${pageName} -> ${targetPageName}`);
-          session.execute(`update`);
-        })
-        .catch((err) => {
-          logger.error(`添加重定向 ${pageName} -> ${targetPageName} 失败`, err);
-        });
+        );
+        logger.info(`已为 ${pageName} 添加重定向至 ${targetPageName}`);
+        session.send(`✅ 已尝试添加重定向 ${pageName} -> ${targetPageName}`);
+        // 更新缓存
+        await session.execute(`update`);
+      } catch (err) {
+        logger.error(`添加重定向 ${pageName} -> ${targetPageName} 失败`, err);
+        session.send(`❌ 添加重定向失败，请联系管理员查看日志`);
+      }
     });
 }
