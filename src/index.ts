@@ -31,6 +31,7 @@ import { generatePinyinInfo } from "./lib";
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.8.1 修复模糊匹配同音不同字问题，优化拼音匹配规则和权重
   - 0.8.0 优化拼音/首字母匹配逻辑，新增拼音/首字母数据库缓存，提升匹配速度和精准度
   - 0.7.5 开启SSL
   - 0.7.4 添加重定向指令
@@ -151,7 +152,10 @@ export function apply(ctx: Context, config: Config) {
       const queryKey = itemName.trim().toLowerCase();
       if (!queryKey) return "❌ 查询关键词不能为空！";
 
-      // 匹配标题
+      // 将用户输入的关键词转换为拼音/首字母
+      const { pinyin_full: queryPinyinFull, pinyin_first: queryPinyinFirst } = generatePinyinInfo(queryKey);
+
+      // 精准匹配标题
       const preciseTitleRes = await ctx.database.get("wikipages", {
         title: queryKey,
       });
@@ -184,19 +188,22 @@ export function apply(ctx: Context, config: Config) {
         return `❌ 本地缓存为空，请联系管理员执行【update】指令更新缓存！`;
       }
 
-      const matchResult: Array<{ id: number; title: string; score: number }> =
-        [];
+      const matchResult: Array<{ id: number; title: string; score: number }> = [];
 
       allPages.forEach((page) => {
         const { title, pinyin_full, pinyin_first } = page;
         let score = 0;
 
-        // 标题包含关键词 +4分
-        if (title.includes(queryKey)) score += 4;
-        // 全拼包含关键词 +3分
-        if (pinyin_full.includes(queryKey)) score += 3;
-        // 首字母包含关键词 +2分
-        if (pinyin_first.includes(queryKey)) score += 2;
+        // 标题包含关键词（最高权重）
+        if (title.includes(queryKey)) score += 10;
+        // 标题拼音前缀匹配用户输入关键词的拼音（次高权重）
+        if (pinyin_full.startsWith(queryPinyinFull)) score += 9;
+        // 标题拼音包含用户输入关键词的拼音
+        if (pinyin_full.includes(queryPinyinFull)) score += 8;
+        // 标题首字母包含用户输入关键词的首字母
+        if (pinyin_first.includes(queryPinyinFirst)) score += 6;
+        // 用户输入关键词的拼音包含标题拼音的前缀（兜底）
+        if (queryPinyinFull.includes(pinyin_full.substring(0, Math.min(pinyin_full.length, queryPinyinFull.length)))) score += 5;
 
         if (score > 0) {
           matchResult.push({ id: page.id, title, score });
@@ -207,8 +214,13 @@ export function apply(ctx: Context, config: Config) {
         return `❌ 未找到【${queryKey}】相关内容，请按游戏内标准名称重新查询！`;
       }
 
-      // 排序去重，返回前5条
-      const sortedResult = matchResult.sort((a, b) => b.score - a.score);
+      // 排序：分数降序 → 标题长度升序
+      const sortedResult = matchResult.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.title.length - b.title.length;
+      });
+
+      // 去重 + 取前5条
       const uniqueResult = Array.from(
         new Map(sortedResult.map((item) => [item.title, item])).values()
       ).slice(0, 5);
