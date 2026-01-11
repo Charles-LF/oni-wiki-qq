@@ -31,20 +31,16 @@ import { generatePinyinInfo } from "./lib";
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.8.2 添加使用说明，空关键词返回使用说明
   - 0.8.1 修复模糊匹配同音不同字问题，优化拼音匹配规则和权重
   - 0.8.0 优化拼音/首字母匹配逻辑，新增拼音/首字母数据库缓存，提升匹配速度和精准度
   - 0.7.5 开启SSL
   - 0.7.4 添加重定向指令
-  - 0.7.3 优化短链接发送消息格式
   - 0.7.2 尝试修复短链接跳转问题
   - 0.7.0 实现短链路由转发，链接改为klei.vip/ggwiki或者bwiki+页面ID
-  - 0.6.1 模糊匹配返回最多5条结果+序号等待交互，超时无输入则静默结束
   - 0.6.0 集成pinyin-pro拼音模糊匹配，精准匹配优先
   - 0.5.0 移除重定向功能 GG站点已修复，保留bwiki更新功能
   - 0.4.9 添加重定向功能
-  - 0.4.8 重启bwiki更新
-  - 0.4.6 移除没必要的功能
-  - 0.4.5 检测教程页面
 `;
 
 export const inject = ["database", "server"];
@@ -148,9 +144,10 @@ export function apply(ctx: Context, config: Config) {
   ctx
     .command("x <itemName>", "查询缺氧中文wiki，精准匹配+拼音模糊匹配")
     .alias("/查wiki")
-    .action(async ({ session }, itemName = "电解器") => {
+    .action(async ({ session }, itemName = "") => {
       const queryKey = itemName.trim().toLowerCase();
-      if (!queryKey) return "❌ 查询关键词不能为空！";
+      // 空关键词返回使用说明，不进行查询，需要手动输入数据库ID 8个8
+      if(queryKey === "") return `以下是使用说明：\n原站点: https://${config.domain}/gg/88888888\n\n镜像站: https://${config.domain}/bw/88888888`;
 
       // 将用户输入的关键词转换为拼音/首字母
       const { pinyin_full: queryPinyinFull, pinyin_first: queryPinyinFirst } = generatePinyinInfo(queryKey);
