@@ -231,7 +231,7 @@ export function apply(ctx: Context, config: Config) {
       await session.send(replyMsg);
 
       // 等待用户输入
-      const userInput = await session.prompt(10000);
+      const userInput = await session.prompt(15000);
       if (!userInput) return;
 
       const selectNum = parseInt(userInput.trim());
