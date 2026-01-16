@@ -25,12 +25,14 @@
 
 import { Context, Schema, Logger } from "koishi";
 import {} from "@koishijs/plugin-server";
+import { QQ } from "@koishijs/plugin-adapter-qq";
 import { Mwn } from "mwn";
 import { generatePinyinInfo } from "./lib";
 
 export const name = "oni-wiki-qq";
 
 export const usage = `
+  - 0.9.0 添加md发送
   - 0.8.2 添加使用说明，空关键词返回使用说明
   - 0.8.1 修复模糊匹配同音不同字问题，优化拼音匹配规则和权重
   - 0.8.0 优化拼音/首字母匹配逻辑，新增拼音/首字母数据库缓存，提升匹配速度和精准度
@@ -67,6 +69,8 @@ export interface Config {
   domain: string;
   main_site: string;
   mirror_site: string;
+  markdown_template_id: string;
+  keyboard_id: string;
 }
 export const Config: Schema<Config> = Schema.object({
   bot_username: Schema.string().description("机器人用户名"),
@@ -83,6 +87,12 @@ export const Config: Schema<Config> = Schema.object({
   mirror_site: Schema.string()
     .description("镜像站域名（必填，如：wiki.biligame.com）")
     .default("wiki.biligame.com/oni"),
+  markdown_template_id: Schema.string()
+    .description("Markdown模板ID")
+    .default("102019091_1708758661"),
+  keyboard_id: Schema.string()
+    .description("键盘ID")
+    .default("102019091_1721643019"),
 });
 
 export function apply(ctx: Context, config: Config) {
@@ -147,10 +157,12 @@ export function apply(ctx: Context, config: Config) {
     .action(async ({ session }, itemName = "") => {
       const queryKey = itemName.trim().toLowerCase();
       // 空关键词返回使用说明，不进行查询，需要手动输入数据库ID 8个8
-      if(queryKey === "") return `以下是使用说明：\n原站点: https://${config.domain}/gg/88888888\n\n镜像站: https://${config.domain}/bw/88888888`;
+      if (queryKey === "")
+        return `以下是使用说明：\n原站点: https://${config.domain}/gg/88888888\n\n镜像站: https://${config.domain}/bw/88888888`;
 
       // 将用户输入的关键词转换为拼音/首字母
-      const { pinyin_full: queryPinyinFull, pinyin_first: queryPinyinFirst } = generatePinyinInfo(queryKey);
+      const { pinyin_full: queryPinyinFull, pinyin_first: queryPinyinFirst } =
+        generatePinyinInfo(queryKey);
 
       // 精准匹配标题
       const preciseTitleRes = await ctx.database.get("wikipages", {
@@ -185,7 +197,8 @@ export function apply(ctx: Context, config: Config) {
         return `❌ 本地缓存为空，请联系管理员执行【update】指令更新缓存！`;
       }
 
-      const matchResult: Array<{ id: number; title: string; score: number }> = [];
+      const matchResult: Array<{ id: number; title: string; score: number }> =
+        [];
 
       allPages.forEach((page) => {
         const { title, pinyin_full, pinyin_first } = page;
@@ -200,7 +213,15 @@ export function apply(ctx: Context, config: Config) {
         // 标题首字母包含用户输入关键词的首字母
         if (pinyin_first.includes(queryPinyinFirst)) score += 6;
         // 用户输入关键词的拼音包含标题拼音的前缀（兜底）
-        if (queryPinyinFull.includes(pinyin_full.substring(0, Math.min(pinyin_full.length, queryPinyinFull.length)))) score += 5;
+        if (
+          queryPinyinFull.includes(
+            pinyin_full.substring(
+              0,
+              Math.min(pinyin_full.length, queryPinyinFull.length)
+            )
+          )
+        )
+          score += 5;
 
         if (score > 0) {
           matchResult.push({ id: page.id, title, score });
@@ -228,8 +249,34 @@ export function apply(ctx: Context, config: Config) {
         replyMsg += `${index + 1}. ${item.title}\n`;
       });
       replyMsg += `\n❗️ 提示：超时将静默结束，无任何回应`;
-      await session.send(replyMsg);
-
+      if (config.markdown_template_id) {
+        try {
+          const md = {
+            content: "111",
+            msg_type: 2,
+            markdown: {
+              custom_template_id: config.markdown_template_id,
+              params: [
+                {
+                  key: "text1",
+                  // QQ 支持的 合规换行转义符 &#10;
+                  values: [replyMsg.replace(/\n/g, "&#10;")],
+                },
+              ],
+            },
+            keyboard: {
+              id: config.keyboard_id,
+            },
+            msg_id: session.messageId,
+            timestamp: session.timestamp,
+            msg_seq: Math.floor(Math.random() * 500),
+          };
+          await session.qq.sendMessage(session.guildId, md);
+        } catch (err) {
+          logger.error("发送markdown失败", err);
+          await session.send(replyMsg);
+        }
+      }
       // 等待用户输入
       const userInput = await session.prompt(15000);
       if (!userInput) return;
@@ -257,7 +304,7 @@ export function apply(ctx: Context, config: Config) {
         });
         logger.info("主站页面查询成功");
         const pages = res.query.allpages || [];
-        
+
         // 批量处理页面数据，生成拼音信息
         const pageData = pages.map((page) => {
           const { pinyin_full, pinyin_first } = generatePinyinInfo(page.title);
@@ -307,10 +354,10 @@ export function apply(ctx: Context, config: Config) {
           Cookie: `SESSDATA=${config.bwiki_session}`,
         };
         const url = `https://wiki.biligame.com/oni/api.php?action=query&list=allpages&apnamespace=0&aplimit=5000&format=json`;
-        
+
         const res = await ctx.http.get(url, { headers });
         const pages = res.query?.allpages || [];
-        
+
         // 批量处理页面数据，生成拼音信息
         const pageData = pages.map((page) => {
           const { pinyin_full, pinyin_first } = generatePinyinInfo(page.title);
